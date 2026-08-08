@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import DistributionChart from '../components/DistributionChart'
 import { fetchProducts } from '../api/products'
 import { createSimulation } from '../api/simulations'
+import { conditionKey } from '../lib/conditionKey'
 import type { DayType, Product, SimulationDetail, StepOut, Weather } from '../api/types'
 
 const STEP_INTERVAL_MS = 500
+const COLORS = ['#d9480f', '#1971c2', '#2f9e44']
 
 export default function SimulationPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -88,6 +91,15 @@ export default function SimulationPage() {
     return latest
   }
 
+  /** まだ1ステップも進んでいない開店直後は、事前分布（山が低く広い状態）を返す。
+   * docs/spec.md §4①「開店直後は山が低く横に広い…」を、最初のティックを待たずに見せるため */
+  function priorDistributionFor(product: Product): { alpha: number; beta: number } | null {
+    if (!detail) return null
+    const key = conditionKey(detail.weather, detail.day_type, detail.has_event)
+    const prior = product.prior_demand[key]
+    return prior ? { alpha: prior.alpha, beta: prior.beta } : null
+  }
+
   const finished = detail !== null && visibleStep >= totalSteps && totalSteps > 0
 
   return (
@@ -140,9 +152,13 @@ export default function SimulationPage() {
       </div>
 
       <div className="product-grid">
-        {products.map((p) => {
+        {products.map((p, i) => {
           const step = latestStepFor(p.id)
           const finalResult = detail?.finals.find((f) => f.product_id === p.id)
+          const distribution =
+            step?.posterior_alpha != null && step?.posterior_beta != null
+              ? { alpha: step.posterior_alpha, beta: step.posterior_beta }
+              : priorDistributionFor(p) // 最初のティック前は事前分布（開店直後の山）を見せる
           return (
             <div className="product-card" key={p.id}>
               <h3>{p.name}</h3>
@@ -154,6 +170,16 @@ export default function SimulationPage() {
                     残り {step?.remaining_stock ?? p.initial_stock} / {p.initial_stock}
                   </p>
                   <p>期待残数: {step ? Math.round((step.posterior_mean ?? 0) * 10) / 10 : '-'}</p>
+                  {distribution && (
+                    <>
+                      <DistributionChart
+                        alpha={distribution.alpha}
+                        beta={distribution.beta}
+                        color={COLORS[i % COLORS.length]}
+                      />
+                      <p className="chart-caption">需要率の確信度（データが増えるほど山が尖る）</p>
+                    </>
+                  )}
                 </>
               )}
               {finished && finalResult && (

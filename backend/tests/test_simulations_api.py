@@ -58,6 +58,25 @@ def test_create_simulation_returns_steps_and_finals(
     assert len(body["steps"]) == len(products) * 40
 
 
+def test_create_simulation_steps_include_growing_posterior_beta(
+    session: Session, client: TestClient
+) -> None:
+    """フロントが確率分布グラフを描けるよう、betaが単調に増えていく様子が返る。"""
+    _add_products(session)
+
+    res = client.post("/api/simulations", json=VALID_BODY)
+
+    body = res.json()
+    product_steps = sorted(
+        (s for s in body["steps"] if s["product_id"] == body["finals"][0]["product_id"]),
+        key=lambda s: s["step"],
+    )
+    betas = [s["posterior_beta"] for s in product_steps]
+    assert all(a is not None for a in betas)
+    assert betas == sorted(betas)  # 露出が積み上がるので単調非減少
+    assert product_steps[0]["posterior_alpha"] is not None
+
+
 def test_create_simulation_rejects_out_of_range_target_waste_rate(
     session: Session, client: TestClient
 ) -> None:
@@ -140,6 +159,12 @@ def test_get_simulation_detail_reconstructs_quantities_from_db(
     }
     for s in detail["steps"]:
         assert s["recommended_rate"] == created_rates[(s["product_id"], s["step"])]
+
+    # 分布パラメータはライブ実行直後（POST）だけに入り、履歴の再構築（GET）では持たない
+    # （docs/spec.md §4①：「履歴画面では表示しない」）
+    assert all(s["posterior_alpha"] is not None for s in created["steps"])
+    assert all(s["posterior_alpha"] is None for s in detail["steps"])
+    assert all(s["posterior_beta"] is None for s in detail["steps"])
 
 
 def test_get_simulation_not_found_returns_404(session: Session, client: TestClient) -> None:

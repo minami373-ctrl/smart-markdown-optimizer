@@ -9,6 +9,8 @@ export interface StepOut {
   recommended_rate: number
   posterior_mean: number | null
   is_new_recommendation: boolean
+  posterior_alpha: number | null
+  posterior_beta: number | null
 }
 
 export interface FinalOut {

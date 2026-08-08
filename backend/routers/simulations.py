@@ -41,6 +41,10 @@ class StepOut(BaseModel):
     recommended_rate: float
     posterior_mean: float | None = None
     is_new_recommendation: bool = False
+    # 需要率の事後分布パラメータ（画面で確率密度曲線を描く用）。
+    # ライブ実行直後（POST応答）だけ入る。履歴の再構築（GET）では持たないため null
+    posterior_alpha: float | None = None
+    posterior_beta: float | None = None
 
 
 class FinalOut(BaseModel):
@@ -190,6 +194,8 @@ def create_simulation(
                 recommended_rate=s.recommended_rate,
                 posterior_mean=s.posterior_mean,
                 is_new_recommendation=s.is_new_recommendation,
+                posterior_alpha=s.posterior_alpha,
+                posterior_beta=s.posterior_beta,
             )
             for s in outcome.steps
         ],

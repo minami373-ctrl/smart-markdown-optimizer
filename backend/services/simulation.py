@@ -54,6 +54,9 @@ class ProductStepResult:
     recommended_rate: float
     posterior_mean: float  # 事後分布に基づく「期待残数」（需要率そのものではない）
     is_new_recommendation: bool
+    # 需要率の事後分布パラメータ（画面で確率密度曲線を描くために公開する。更新後の値）
+    posterior_alpha: float
+    posterior_beta: float
 
 
 @dataclass
@@ -182,6 +185,8 @@ def run_simulation(
                     recommended_rate=state["last_recommended"],
                     posterior_mean=expected_remaining,
                     is_new_recommendation=is_new,
+                    posterior_alpha=state["alpha"],
+                    posterior_beta=state["beta"],
                 )
             )
 

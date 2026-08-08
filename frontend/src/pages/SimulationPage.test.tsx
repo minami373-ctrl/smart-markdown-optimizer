@@ -49,6 +49,8 @@ describe('SimulationPage', () => {
           recommended_rate: 0.2,
           posterior_mean: 3.5,
           is_new_recommendation: true,
+          posterior_alpha: 5.0,
+          posterior_beta: 2.0,
         },
       ],
     }
