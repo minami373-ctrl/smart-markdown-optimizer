@@ -1,0 +1,179 @@
+:root {
+  --brand: #d9480f;
+  --brand-weak: #fff0e6;
+  --bg: #faf9f7;
+  --panel: #ffffff;
+  --ink: #2b2620;
+  --sub: #7a7268;
+  --line: #e8e2d9;
+  --ok: #1a7f4e;
+  --warn: #b23a2f;
+  font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.app {
+  min-height: 100vh;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 700;
+}
+
+.nav nav {
+  display: flex;
+  gap: 16px;
+}
+
+.nav a {
+  color: var(--sub);
+  text-decoration: none;
+  padding: 6px 4px;
+  border-bottom: 2px solid transparent;
+}
+
+.nav a.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px 24px 60px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--sub);
+}
+
+.form-row select,
+.form-row input[type='range'] {
+  padding: 4px;
+}
+
+button.primary {
+  background: var(--brand);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 18px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  background: #c9beb1;
+  cursor: not-allowed;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.product-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fffefc;
+}
+
+.product-card h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.product-card .rate {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.tag.ok {
+  background: #e3f5ec;
+  color: var(--ok);
+}
+
+.tag.warn {
+  background: #fbe7e4;
+  color: var(--warn);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  color: var(--sub);
+  font-weight: 600;
+}
+
+.history-row {
+  cursor: pointer;
+}
+
+.history-row:hover {
+  background: var(--brand-weak);
+}
+
+.error {
+  color: var(--warn);
+  font-size: 13px;
+}
