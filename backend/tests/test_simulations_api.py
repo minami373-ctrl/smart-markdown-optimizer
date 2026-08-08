@@ -171,3 +171,51 @@ def test_get_simulation_not_found_returns_404(session: Session, client: TestClie
     res = client.get("/api/simulations/9999")
 
     assert res.status_code == 404
+
+
+def test_get_simulation_survives_deleted_product(session: Session, client: TestClient) -> None:
+    """商品を削除した後でも、その商品を含む過去の履歴の取得はエラーにならない
+    （docs/spec.md §4②・§7）。remaining_stock は初期在庫が分からないため null になる。"""
+    products = _add_products(session)
+    created = client.post("/api/simulations", json=VALID_BODY).json()
+    run_id = created["id"]
+    deleted_id = products[0].id
+
+    del_res = client.delete(f"/api/products/{deleted_id}")
+    assert del_res.status_code == 204
+
+    res = client.get(f"/api/simulations/{run_id}")
+
+    assert res.status_code == 200
+    detail = res.json()
+    deleted_steps = [s for s in detail["steps"] if s["product_id"] == deleted_id]
+    assert deleted_steps, "削除した商品ぶんのstepsが無くなってはいけない（quantityの記録は残す）"
+    assert all(s["remaining_stock"] is None for s in deleted_steps)
+    # 削除していない商品は通常どおり数値が入る
+    other_steps = [s for s in detail["steps"] if s["product_id"] != deleted_id]
+    assert all(s["remaining_stock"] is not None for s in other_steps)
+
+    # 履歴一覧側は既存の "?" フォールバックで壊れない
+    list_res = client.get("/api/simulations")
+    assert list_res.status_code == 200
+    names = {f["product_name"] for r in list_res.json() for f in r["finals"]}
+    assert "?" in names
+
+
+def test_deleted_product_id_is_not_reused_by_sqlite(
+    session: Session, client: TestClient
+) -> None:
+    """SQLiteはAUTOINCREMENT無しだと削除した行のidを使い回すため、
+    別商品を新規作成したときに過去の履歴と衝突しないことを確認する。"""
+    products = _add_products(session)
+    deleted_id = products[0].id
+
+    client.delete(f"/api/products/{deleted_id}")
+
+    res = client.post(
+        "/api/products",
+        json={"name": "新商品", "initial_stock": 10, "elasticity": 0.1, "base_demand": 1.0},
+    )
+
+    assert res.status_code == 201
+    assert res.json()["id"] != deleted_id

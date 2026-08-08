@@ -20,6 +20,23 @@ describe('apiFetch', () => {
     expect(result).toEqual({ hello: 'world' })
   })
 
+  it('204 No Content ではJSONパースせずundefinedを返す（DELETE等）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 204,
+        json: async () => {
+          throw new Error('本文が無いのでJSONパースは呼ばれないはず')
+        },
+      }),
+    )
+
+    const result = await apiFetch('/products/1', { method: 'DELETE' })
+
+    expect(result).toBeUndefined()
+  })
+
   it('throws the server detail message on non-ok response', async () => {
     vi.stubGlobal(
       'fetch',

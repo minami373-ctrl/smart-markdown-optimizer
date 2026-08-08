@@ -37,7 +37,8 @@ class StepOut(BaseModel):
     product_id: int
     step: int
     quantity: int
-    remaining_stock: int
+    # 商品が削除済みで初期在庫が分からない場合は null（docs/spec.md §4②）
+    remaining_stock: int | None
     recommended_rate: float
     posterior_mean: float | None = None
     is_new_recommendation: bool = False
@@ -258,7 +259,10 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
     rec_index: dict[int, int] = {}
 
     for log in logs:
-        remaining_by_product[log.product_id] -= log.quantity
+        # 商品が削除済みだと initial_stock に無いので、在庫は追跡できない（null のまま）
+        if log.product_id in remaining_by_product:
+            remaining_by_product[log.product_id] -= log.quantity
+        remaining_stock = remaining_by_product.get(log.product_id)
 
         product_recs = rec_by_product.get(log.product_id, [])
         idx = rec_index.get(log.product_id, 0)
@@ -274,7 +278,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
                 product_id=log.product_id,
                 step=log.step,
                 quantity=log.quantity,
-                remaining_stock=remaining_by_product[log.product_id],
+                remaining_stock=remaining_stock,
                 recommended_rate=current_rate.get(log.product_id, 0.0),
                 posterior_mean=None,
                 is_new_recommendation=is_new,

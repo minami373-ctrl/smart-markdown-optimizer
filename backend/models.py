@@ -13,10 +13,14 @@ DAY_TYPES: tuple[str, ...] = ("平日", "休日")
 
 
 class Product(SQLModel, table=True):
-    """商品（seed固定・3件）。prior_demand は12通り（天気3×曜日2×イベント2）の
-    ガンマ分布パラメータを JSON 文字列で持つ。
+    """商品（初期状態は3件・seed投入。画面から追加・削除できる）。prior_demand は
+    12通り（天気3×曜日2×イベント2）のガンマ分布パラメータを JSON 文字列で持つ。
     キー形式: f"{weather}_{day_type}_{'あり' if has_event else 'なし'}"
     """
+
+    # sqlite_autoincrement: 削除した商品のidをSQLiteが使い回すと、過去の
+    # PurchaseLog等が別の新しい商品を指してしまう（履歴の誤帰属）。それを防ぐ
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: int | None = Field(default=None, primary_key=True)
     name: str

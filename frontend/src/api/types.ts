@@ -5,7 +5,8 @@ export interface StepOut {
   product_id: number
   step: number
   quantity: number
-  remaining_stock: number
+  // 商品が削除済みだと初期在庫が分からず追跡できないため null になりうる（履歴の再構築時のみ）
+  remaining_stock: number | null
   recommended_rate: number
   posterior_mean: number | null
   is_new_recommendation: boolean
@@ -47,4 +48,11 @@ export interface Product {
   initial_stock: number
   elasticity: number
   prior_demand: Record<string, PriorDemand>
+}
+
+export interface ProductCreateInput {
+  name: string
+  initial_stock: number
+  elasticity: number
+  base_demand: number
 }

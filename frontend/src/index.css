@@ -158,6 +158,17 @@ button.primary:disabled {
   margin: 0;
 }
 
+.link-danger {
+  float: right;
+  background: none;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
