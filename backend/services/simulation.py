@@ -136,8 +136,10 @@ def run_simulation(
             state = states[p.product_id]
 
             # 1) 現在の値引き率で購入を生成（在庫を超えない）。
-            #    需要率の推定は MAP（ガンマ分布の最頻値）を使う（docs/spec.md の「MAP推定」に合わせる）
-            demand_rate = posterior_mode(state["alpha"], state["beta"])
+            #    実際の購入個数を左右する「真の需要率」は事後分布の平均（期待値）を使う。
+            #    MAP（最頻値）は alpha<=1 で 0 に潰れてしまい、需要がゼロに固定されて
+            #    しまうため、購入生成には使わない（MAPは §5.3 の値引き計算専用）
+            demand_rate = state["alpha"] / state["beta"]
             multiplier = discount_multiplier(state["discount"], p.elasticity)
             true_rate = demand_rate * multiplier
             quantity = _sample_poisson(state["rng"], true_rate)
@@ -148,14 +150,15 @@ def run_simulation(
             state["alpha"] += quantity
             state["beta"] += multiplier
 
-            # 3) 次の値引き率を計算（更新後のMAP推定を使う）
-            updated_rate = posterior_mode(state["alpha"], state["beta"])
+            # 3) 次の値引き率を計算。ここは仕様どおりMAP推定（ガンマ分布の最頻値）を使う
+            updated_mean = state["alpha"] / state["beta"]
+            updated_mode = posterior_mode(state["alpha"], state["beta"])
             target_waste_stock = target_waste_rate * p.initial_stock
             candidate_rate = _required_discount_rate(
                 remaining_stock=state["remaining"],
                 remaining_steps=remaining_steps - 1,
                 target_waste_stock=target_waste_stock,
-                baseline_rate=updated_rate,
+                baseline_rate=updated_mode,
                 elasticity=p.elasticity,
             )
 
@@ -165,9 +168,9 @@ def run_simulation(
             state["discount"] = state["last_recommended"]
 
             # 画面に出す「事後分布の期待残数」（docs/spec.md §4①・§6）。
-            # 需要率そのものではなく、残り時間で見込まれる需要を在庫から差し引いた値
+            # 「期待」＝平均を使う（残り時間で見込まれる需要の平均を在庫から差し引いた値）
             expected_remaining = max(
-                state["remaining"] - updated_rate * (remaining_steps - 1), 0.0
+                state["remaining"] - updated_mean * (remaining_steps - 1), 0.0
             )
 
             outcome.steps.append(
