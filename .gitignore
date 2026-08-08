@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# SQLite（seedから作り直せるのでコミットしない）
+*.db
+backend/app.db
+backend/app.db-*
+*.db-wal
+*.db-shm
+
+# 依存関係・ビルド成果物
+node_modules/
+dist/
+build/
+
+# OS・エディタ
+.DS_Store
+Thumbs.db
+*.swp
+
+# TypeScriptのビルド情報
+*.tsbuildinfo
