@@ -12,7 +12,7 @@ import random
 from dataclasses import dataclass, field
 
 STEPS = 40
-DISCOUNT_STEP_UNIT = 0.10  # 弾力性は「値引き10%あたり」の倍率として定義されている
+DISCOUNT_STEP_UNIT = 0.10  # 値引き感度(elasticity)は「値引き10%あたり」の倍率として定義されている
 MIN_DISCOUNT = 0.0
 MAX_DISCOUNT = 0.70
 #: 前回提案からこの幅（%pt）以上変化しないと新しい提案として記録しない

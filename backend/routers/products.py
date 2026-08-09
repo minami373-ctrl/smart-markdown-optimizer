@@ -70,6 +70,27 @@ def create_product(
     return _to_out(product)
 
 
+@router.patch("/{product_id}", response_model=ProductOut)
+def update_product(
+    product_id: int, body: ProductCreate, session: Session = Depends(get_session)
+) -> ProductOut:
+    """商品名・初期在庫・値引き感度・基準需要を丸ごと上書きする（部分更新ではない）。
+    基準需要から12条件ぶんの事前分布を作り直す（docs/spec.md §4②）。"""
+    product = session.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="商品が見つかりません")
+
+    prior_demand = generate_prior_demand(body.base_demand)
+    product.name = body.name
+    product.initial_stock = body.initial_stock
+    product.elasticity = body.elasticity
+    product.prior_demand = json.dumps(prior_demand, ensure_ascii=False)
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return _to_out(product)
+
+
 @router.delete("/{product_id}", status_code=204)
 def delete_product(product_id: int, session: Session = Depends(get_session)) -> None:
     product = session.get(Product, product_id)

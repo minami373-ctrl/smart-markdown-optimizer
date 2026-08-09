@@ -12,6 +12,13 @@ export function createProduct(input: ProductCreateInput): Promise<Product> {
   })
 }
 
+export function updateProduct(id: number, input: ProductCreateInput): Promise<Product> {
+  return apiFetch<Product>(`/products/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
 export function deleteProduct(id: number): Promise<void> {
   return apiFetch<void>(`/products/${id}`, { method: 'DELETE' })
 }

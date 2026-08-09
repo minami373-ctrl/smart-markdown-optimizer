@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProductsPage from './ProductsPage'
@@ -99,5 +99,68 @@ describe('ProductsPage', () => {
       expect(deleteSpy).toHaveBeenCalledWith(1)
     })
     expect(productsApi.fetchProducts).toHaveBeenCalledTimes(2)
+  })
+
+  it('編集ボタンを押すと、基準需要が事前分布から逆算された状態でフォームが開く', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue(ONE_PRODUCT)
+
+    const user = userEvent.setup()
+    render(<ProductsPage />)
+    await screen.findByText(/唐揚げ/)
+
+    await user.click(screen.getByRole('button', { name: '編集' }))
+
+    const editCard = screen.getByText('唐揚げ を編集').closest('.card') as HTMLElement
+    expect(editCard).toBeInTheDocument()
+    // alpha 3.12 ÷ (1.2×1.0×1.0×2.0) = 1.3
+    const baseDemandInput = within(editCard).getByLabelText(
+      '基準需要（平日・晴れ・1stepの平均個数）',
+    ) as HTMLInputElement
+    expect(baseDemandInput.value).toBe('1.3')
+  })
+
+  it('編集して保存すると、updateProductを呼び一覧を再取得して編集を閉じる', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue(ONE_PRODUCT)
+    const updateSpy = vi.spyOn(productsApi, 'updateProduct').mockResolvedValue({
+      ...ONE_PRODUCT[0],
+      name: '唐揚げ大盛り',
+    })
+
+    const user = userEvent.setup()
+    render(<ProductsPage />)
+    await screen.findByText(/唐揚げ/)
+
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    const editCard = screen.getByText('唐揚げ を編集').closest('.card') as HTMLElement
+    const nameInput = within(editCard).getByLabelText('商品名') as HTMLInputElement
+    await user.clear(nameInput)
+    await user.type(nameInput, '唐揚げ大盛り')
+    await user.click(within(editCard).getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith(1, {
+        name: '唐揚げ大盛り',
+        initial_stock: 50,
+        elasticity: 0.12,
+        base_demand: 1.3,
+      })
+    })
+    expect(productsApi.fetchProducts).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('唐揚げ を編集')).not.toBeInTheDocument()
+  })
+
+  it('キャンセルを押すとupdateProductを呼ばずに編集フォームを閉じる', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue(ONE_PRODUCT)
+    const updateSpy = vi.spyOn(productsApi, 'updateProduct')
+
+    const user = userEvent.setup()
+    render(<ProductsPage />)
+    await screen.findByText(/唐揚げ/)
+
+    await user.click(screen.getByRole('button', { name: '編集' }))
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }))
+
+    expect(updateSpy).not.toHaveBeenCalled()
+    expect(screen.queryByText('唐揚げ を編集')).not.toBeInTheDocument()
   })
 })

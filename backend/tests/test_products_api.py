@@ -92,3 +92,56 @@ def test_delete_product_removes_it_from_list(session: Session, client: TestClien
 def test_delete_nonexistent_product_returns_404(session: Session, client: TestClient) -> None:
     res = client.delete("/api/products/9999")
     assert res.status_code == 404
+
+
+def test_update_product_regenerates_prior_demand(session: Session, client: TestClient) -> None:
+    created = client.post(
+        "/api/products",
+        json={"name": "たこ焼き", "initial_stock": 20, "elasticity": 0.15, "base_demand": 1.0},
+    ).json()
+
+    res = client.patch(
+        f"/api/products/{created['id']}",
+        json={"name": "たこ焼き", "initial_stock": 30, "elasticity": 0.2, "base_demand": 2.0},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["initial_stock"] == 30
+    assert body["elasticity"] == 0.2
+    # base_demandが2倍になったので alpha も2倍になっているはず
+    old_alpha = created["prior_demand"]["晴れ_平日_なし"]["alpha"]
+    new_alpha = body["prior_demand"]["晴れ_平日_なし"]["alpha"]
+    assert new_alpha == old_alpha * 2
+
+
+def test_update_product_can_rename(session: Session, client: TestClient) -> None:
+    product = _add_product(session, "旧名前")
+
+    res = client.patch(
+        f"/api/products/{product.id}",
+        json={"name": "新名前", "initial_stock": 10, "elasticity": 0.1, "base_demand": 1.0},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["name"] == "新名前"
+
+
+def test_update_nonexistent_product_returns_404(session: Session, client: TestClient) -> None:
+    res = client.patch(
+        "/api/products/9999",
+        json={"name": "x", "initial_stock": 10, "elasticity": 0.1, "base_demand": 1.0},
+    )
+    assert res.status_code == 404
+
+
+def test_update_product_rejects_non_positive_values(
+    session: Session, client: TestClient
+) -> None:
+    product = _add_product(session)
+
+    res = client.patch(
+        f"/api/products/{product.id}",
+        json={"name": "x", "initial_stock": -1, "elasticity": 0.1, "base_demand": 1.0},
+    )
+    assert res.status_code == 422

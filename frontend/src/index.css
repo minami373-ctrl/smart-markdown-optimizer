@@ -169,6 +169,18 @@ button.primary:disabled {
   cursor: pointer;
 }
 
+.link-secondary {
+  float: right;
+  margin-right: 8px;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--sub);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
