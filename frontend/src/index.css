@@ -152,6 +152,11 @@ button.primary:disabled {
   margin: 8px 0;
 }
 
+.stock-chart {
+  height: 220px;
+  margin: 8px 0;
+}
+
 .chart-caption {
   font-size: 11px;
   color: var(--sub);

@@ -6,6 +6,16 @@ import * as productsApi from '../api/products'
 import * as simulationsApi from '../api/simulations'
 import type { Product, SimulationDetail } from '../api/types'
 
+// jsdomはcanvasを実装していない。responsive:trueのLine（在庫推移グラフ）は、chart.js内部の
+// リサイズ監視（bindResponsiveEvents → Chart._resize → getComputedStyle）がsetIntervalによる
+// 連続更新の途中でcanvas未添付を検知した際に `getComputedStyle(null)` で例外を投げる
+// （jsdom環境固有の問題でアプリの不具合ではない。原因を実測で確認済み）。
+// 描画結果ではなくページのロジックを検証したいテストのため、Lineは軽量スタブに差し替える。
+// 在庫推移グラフのデータ整形ロジック自体は lib/stockChartData.test.ts で直接テストする。
+vi.mock('react-chartjs-2', () => ({
+  Line: () => null,
+}))
+
 const PRODUCT: Product = {
   id: 1,
   name: '唐揚げ',
@@ -81,6 +91,17 @@ describe('SimulationPage', () => {
     )
     expect(screen.getByText('目標未達')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '営業開始' })).not.toBeDisabled()
+    // 在庫推移グラフはシミュレーション開始後に表示される（docs/spec.md §4①）
+    expect(screen.getByText('在庫推移')).toBeInTheDocument()
+  })
+
+  it('営業開始前は在庫推移グラフを表示しない', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([PRODUCT])
+
+    render(<SimulationPage />)
+    await screen.findByText('条件を設定して「営業開始」を押してください。')
+
+    expect(screen.queryByText('在庫推移')).not.toBeInTheDocument()
   })
 
   it('API呼び出しが失敗したらエラーメッセージを表示し、ボタンを再度押せるようにする', async () => {

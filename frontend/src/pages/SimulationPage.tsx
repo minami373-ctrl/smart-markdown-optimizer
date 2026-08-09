@@ -1,9 +1,22 @@
+import {
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
+} from 'chart.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Line } from 'react-chartjs-2'
 import DistributionChart from '../components/DistributionChart'
 import { fetchProducts } from '../api/products'
 import { createSimulation } from '../api/simulations'
 import { conditionKey } from '../lib/conditionKey'
+import { buildStockChartData } from '../lib/stockChartData'
 import type { DayType, Product, SimulationDetail, StepOut, Weather } from '../api/types'
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
 const STEP_INTERVAL_MS = 500
 const COLORS = ['#d9480f', '#1971c2', '#2f9e44']
@@ -193,6 +206,53 @@ export default function SimulationPage() {
             </div>
           )
         })}
+      </div>
+
+      {detail && <StockChart detail={detail} visibleStep={visibleStep} />}
+    </div>
+  )
+}
+
+/** 商品ごとの残り在庫数の推移を折れ線で描く（docs/spec.md §4①）。
+ * `/history` の値引き率推移グラフ（RateChart）と同じ描画方式で、visibleStepまでを描画する。
+ * 商品名は`RateChart`と同じく`detail.finals`（実行時点のスナップショット）から解決する。
+ * 実行中に別画面で商品が削除されても、他のカードの表示（`finalResult`）と名前がずれない */
+function StockChart({ detail, visibleStep }: { detail: SimulationDetail; visibleStep: number }) {
+  const nameSource = detail.finals.map((f) => ({ id: f.product_id, name: f.product_name }))
+  const { labels, series } = buildStockChartData(detail.steps, nameSource, visibleStep)
+
+  const datasets = series.map((s, i) => ({
+    label: s.name,
+    data: s.data,
+    borderColor: COLORS[i % COLORS.length],
+    backgroundColor: COLORS[i % COLORS.length],
+    tension: 0.1,
+  }))
+
+  return (
+    <div className="card">
+      <h2>在庫推移</h2>
+      <p className="chart-caption">
+        {/* responsive:trueのLegendプラグインはjsdomのcanvas未実装環境でリサイズ監視まわりの
+            例外を誘発する（SimulationPage.test.tsxのvi.mockコメント参照）ため使わず、
+            DistributionChartと同じくlegend/tooltipを無効化し、色の対応表を自前で出す */}
+        {series.map((s, i) => (
+          <span key={s.productId} style={{ color: COLORS[i % COLORS.length], marginRight: 12 }}>
+            ● {s.name}
+          </span>
+        ))}
+      </p>
+      <div className="stock-chart">
+        <Line
+          data={{ labels, datasets }}
+          options={{
+            animation: false,
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { y: { title: { display: true, text: '残り在庫数' }, beginAtZero: true } },
+          }}
+        />
       </div>
     </div>
   )
