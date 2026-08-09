@@ -56,3 +56,11 @@ export interface ProductCreateInput {
   elasticity: number
   base_demand: number
 }
+
+export interface Opportunity {
+  product_id: number
+  product_name: string
+  occurrence_count: number
+  avg_sellout_step: number
+  avg_suggested_increase: number
+}

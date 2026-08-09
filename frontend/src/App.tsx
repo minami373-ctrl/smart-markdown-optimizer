@@ -2,6 +2,7 @@ import { NavLink, Route, Routes } from 'react-router-dom'
 import SimulationPage from './pages/SimulationPage'
 import ProductsPage from './pages/ProductsPage'
 import HistoryPage from './pages/HistoryPage'
+import OpportunitiesPage from './pages/OpportunitiesPage'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           </NavLink>
           <NavLink to="/products">商品設定</NavLink>
           <NavLink to="/history">履歴</NavLink>
+          <NavLink to="/opportunities">機会損失分析</NavLink>
         </nav>
       </header>
       <main>
@@ -21,6 +23,7 @@ export default function App() {
           <Route path="/" element={<SimulationPage />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/opportunities" element={<OpportunitiesPage />} />
         </Routes>
       </main>
     </div>
