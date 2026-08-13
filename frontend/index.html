@@ -5,6 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>frontend</title>
+    <script>
+      // ダークモードの初期値をReactのマウントを待たず同期的に適用する
+      // （src/lib/theme.tsのgetInitialThemeと同じ優先順位。FOUC＝一瞬ライトモードで
+      // 表示されてからダークに切り替わる、を防ぐため。ここだけはビルド前に実行する
+      // 必要があるためロジックを重複させている）
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme')
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+          document.documentElement.setAttribute('data-theme', theme)
+        } catch (e) {
+          // localStorage/matchMediaが使えない環境でもページの表示自体は止めない
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

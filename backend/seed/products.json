@@ -3,6 +3,7 @@
     "name": "唐揚げ",
     "initial_stock": 50,
     "elasticity": 0.12,
+    "unit_price": 350,
     "prior_demand": {
       "晴れ_平日_なし": { "alpha": 3.12, "beta": 2.0 },
       "晴れ_平日_あり": { "alpha": 4.368, "beta": 2.0 },
@@ -22,6 +23,7 @@
     "name": "おでん",
     "initial_stock": 40,
     "elasticity": 0.10,
+    "unit_price": 200,
     "prior_demand": {
       "晴れ_平日_なし": { "alpha": 2.16, "beta": 2.0 },
       "晴れ_平日_あり": { "alpha": 3.024, "beta": 2.0 },
@@ -41,6 +43,7 @@
     "name": "寿司",
     "initial_stock": 30,
     "elasticity": 0.18,
+    "unit_price": 480,
     "prior_demand": {
       "晴れ_平日_なし": { "alpha": 1.68, "beta": 2.0 },
       "晴れ_平日_あり": { "alpha": 2.352, "beta": 2.0 },

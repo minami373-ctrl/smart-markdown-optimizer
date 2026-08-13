@@ -4,8 +4,16 @@ DB もネットワークも触らない純関数の集まり。ガンマ分布�
 値引き率を「既知の露出（exposure）」として扱うガンマ-ポアソン更新を行う
 （値引きで需要が multiplier 倍になる → その分だけ観測の重み beta を増やす）。
 
-MAP推定（最大事後確率推定）はガンマ分布の最頻値 (alpha-1)/beta を使う
-（alpha<=1 のときは 0 が最頻値になるので 0 に丸める）。
+値引き率の計算には事後分布の平均 alpha/beta を使う（2026-08-14改訂。docs/spec.md §5.2 step2c）。
+以前はMAP推定（ガンマ分布の最頻値 (alpha-1)/beta）を使っていたが、alpha<=1（観測が少ない
+開店直後によく起こる）だと最頻値がちょうど0に潰れてしまい、「今のペースなら一日中売れない」
+という誤判定でいきなり最大値引き（75%）が提案される不具合があった。平均は観測が少なくても
+0に潰れないため、序盤は緩やかに様子を見る判定になる。
+
+さらに、完売後もベイズ更新を続けない（§5.2 step2b。打ち切りデータの扱い）・開店直後の
+様子見期間（GRACE_PERIOD_STEPS。§5.3）の2つも同日に追加した。値引きは下げない仕様
+（単調増加）のため、序盤にたまたま数ステップ売れなかっただけで大きな値引きに固定されて
+しまうケースが実測で確認され、これを緩和するための一連の修正。
 """
 
 import random
@@ -14,9 +22,19 @@ from dataclasses import dataclass, field
 STEPS = 40
 DISCOUNT_STEP_UNIT = 0.10  # 値引き感度(elasticity)は「値引き10%あたり」の倍率として定義されている
 MIN_DISCOUNT = 0.0
-MAX_DISCOUNT = 0.70
-#: 前回提案からこの幅（%pt）以上変化しないと新しい提案として記録しない
+MAX_DISCOUNT = 0.75
+#: 開店直後のこのステップ数（0始まりでstep < GRACE_PERIOD_STEPS）は値引き提案の計算を行わない
+#: （docs/spec.md §5.3「開店直後の様子見期間」）。購入生成・事後分布の更新は通常どおり続ける。
+#: 値引きは下げない仕様（単調増加）のため、序盤にたまたま数ステップ売れなかっただけで
+#: 大きな値引きに固定されてしまうのを防ぐ
+GRACE_PERIOD_STEPS = 5
+#: 前回提案からこの幅（%pt）以上変化しないと新しい提案として記録しない。
+#: DISCOUNT_TIERS導入後は隣接する刻み同士の差（最小20pt）が必ずこれを上回るため、
+#: 実質「刻みが変わったかどうか」と同じ判定になっている（意図的な残置。壊れてはいない）
 MIN_RATE_CHANGE = 0.05
+#: 実店舗の値引きシールが「30%引き・半額・75%引き」の3段階しか無い、という
+#: この企画の出発点（docs/spec.md §1）に合わせた値引きの刻み（§5.3）
+DISCOUNT_TIERS: tuple[float, ...] = (0.0, 0.30, 0.50, MAX_DISCOUNT)
 
 
 def condition_key(weather: str, day_type: str, has_event: bool) -> str:
@@ -26,13 +44,6 @@ def condition_key(weather: str, day_type: str, has_event: bool) -> str:
 def discount_multiplier(discount_rate: float, elasticity: float) -> float:
     """値引き率から需要の倍率を返す。0%引きなら1.0倍。"""
     return 1.0 + elasticity * (discount_rate / DISCOUNT_STEP_UNIT)
-
-
-def posterior_mode(alpha: float, beta: float) -> float:
-    """ガンマ分布の最頻値（MAP推定量）。alpha<=1 なら 0。"""
-    if alpha <= 1.0 or beta <= 0:
-        return 0.0
-    return (alpha - 1.0) / beta
 
 
 @dataclass
@@ -64,6 +75,9 @@ class ProductFinalResult:
     product_id: int
     final_waste_rate: float
     achieved: bool
+    # 終了時点の事後分布（docs/spec.md §5.2 step4「学習の継続」で次回の事前分布として使う）
+    final_alpha: float
+    final_beta: float
 
 
 @dataclass
@@ -103,6 +117,20 @@ def _required_discount_rate(
     return max(MIN_DISCOUNT, min(MAX_DISCOUNT, rate))
 
 
+def _snap_to_tier(rate: float) -> float:
+    """連続値の値引き率を、実店舗にある値引きの刻み（DISCOUNT_TIERS）のうち
+    その値以上で最小のものに切り上げる（docs/spec.md §5.3）。
+
+    切り下げではなく切り上げなのは、目標廃棄率を満たすのに必要な値引きが刻みの間の
+    半端な値になったとき、切り下げると値引きが足りず目標未達になりやすいため
+    （安全側＝売り切りやすい側に倒す）。rateが最大の刻みを超えていたら最大値に丸める。
+    """
+    for tier in DISCOUNT_TIERS:
+        if rate <= tier:
+            return tier
+    return DISCOUNT_TIERS[-1]
+
+
 def run_simulation(
     products: list[ProductInput],
     target_waste_rate: float,
@@ -138,34 +166,57 @@ def run_simulation(
         for p in active_products:
             state = states[p.product_id]
 
-            # 1) 現在の値引き率で購入を生成（在庫を超えない）。
-            #    実際の購入個数を左右する「真の需要率」は事後分布の平均（期待値）を使う。
-            #    MAP（最頻値）は alpha<=1 で 0 に潰れてしまい、需要がゼロに固定されて
-            #    しまうため、購入生成には使わない（MAPは §5.3 の値引き計算専用）
-            demand_rate = state["alpha"] / state["beta"]
-            multiplier = discount_multiplier(state["discount"], p.elasticity)
-            true_rate = demand_rate * multiplier
-            quantity = _sample_poisson(state["rng"], true_rate)
-            quantity = min(quantity, state["remaining"])
-            state["remaining"] -= quantity
+            # 1)〜2) 在庫が残っているステップだけ購入を生成しベイズ更新する。
+            #    在庫が0（完売済み）のステップは「これ以上売れたかどうか」を観測できない
+            #    （打ち切りデータ）。ここをガードせず更新を続けると、完売後も
+            #    beta（既知の露出）だけがステップごとに際限なく増え続け、alphaは増えないため、
+            #    事後分布の平均 alpha/beta が実際の需要より大幅に低く見えてしまう
+            #    （2026-08-14に発覚。実際に完売直後から残り39ステップぶんbetaが積み上がり、
+            #    「学習の継続」で次回の事前分布が回を追うごとに下振れしていく不具合があった）
+            if state["remaining"] > 0:
+                # 実際の購入個数を左右する「真の需要率」は事後分布の平均（期待値）を使う
+                # （値引き率の計算に使う updated_mean と同じ考え方。§5.3参照）
+                demand_rate = state["alpha"] / state["beta"]
+                multiplier = discount_multiplier(state["discount"], p.elasticity)
+                true_rate = demand_rate * multiplier
+                quantity = _sample_poisson(state["rng"], true_rate)
+                quantity = min(quantity, state["remaining"])
+                state["remaining"] -= quantity
 
-            # 2) ベイズ更新（値引きによる需要倍率を「既知の露出」として扱う）
-            state["alpha"] += quantity
-            state["beta"] += multiplier
+                # ベイズ更新（値引きによる需要倍率を「既知の露出」として扱う）
+                state["alpha"] += quantity
+                state["beta"] += multiplier
+            else:
+                quantity = 0
 
-            # 3) 次の値引き率を計算。ここは仕様どおりMAP推定（ガンマ分布の最頻値）を使う
+            # 3) 次の値引き率を計算。事後分布の平均（期待値）を使う（2026-08-14改訂。
+            #    以前はMAP推定＝最頻値を使っていたが、alpha<=1で0に潰れて「一日中売れない」
+            #    と誤判定し、いきなり最大値引きが提案される不具合があったため変更した）
             updated_mean = state["alpha"] / state["beta"]
-            updated_mode = posterior_mode(state["alpha"], state["beta"])
-            target_waste_stock = target_waste_rate * p.initial_stock
-            candidate_rate = _required_discount_rate(
-                remaining_stock=state["remaining"],
-                remaining_steps=remaining_steps - 1,
-                target_waste_stock=target_waste_stock,
-                baseline_rate=updated_mode,
-                elasticity=p.elasticity,
-            )
+            if step < GRACE_PERIOD_STEPS:
+                # 開店直後の様子見期間（docs/spec.md §5.3）：序盤にたまたま数ステップ
+                # 売れなかっただけで、単調増加ルールのせいで最後まで大きな値引きに
+                # 固定されてしまうのを防ぐ。この間は値引き提案の計算そのものを行わない
+                # （観測・事後分布の更新は上記のとおり通常どおり続けている）
+                continuous_rate = 0.0
+            else:
+                target_waste_stock = target_waste_rate * p.initial_stock
+                continuous_rate = _required_discount_rate(
+                    remaining_stock=state["remaining"],
+                    remaining_steps=remaining_steps - 1,
+                    target_waste_stock=target_waste_stock,
+                    baseline_rate=updated_mean,
+                    elasticity=p.elasticity,
+                )
+            # 連続値のままでは提案しない。実店舗の値引きの刻みに丸める（docs/spec.md §5.3）
+            snapped_rate = _snap_to_tier(continuous_rate)
+            # 値引きシールは一度貼ったら剥がせない、という物理的な制約の再現：
+            # 値引き率は一度上がったら下がらない（前のステップ以上にしかならない）
+            candidate_rate = max(snapped_rate, state["last_recommended"])
 
-            is_new = abs(candidate_rate - state["last_recommended"]) >= MIN_RATE_CHANGE
+            # candidate_rate は必ず last_recommended 以上（値引きは下げないため）。
+            # 差は常に非負なので abs() は不要
+            is_new = candidate_rate - state["last_recommended"] >= MIN_RATE_CHANGE
             if is_new:
                 state["last_recommended"] = candidate_rate
             state["discount"] = state["last_recommended"]
@@ -198,6 +249,8 @@ def run_simulation(
                 product_id=p.product_id,
                 final_waste_rate=final_waste_rate,
                 achieved=final_waste_rate <= target_waste_rate,
+                final_alpha=state["alpha"],
+                final_beta=state["beta"],
             )
         )
 

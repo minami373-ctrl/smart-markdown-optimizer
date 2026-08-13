@@ -21,6 +21,15 @@ export interface FinalOut {
   achieved: boolean
 }
 
+// 在庫の自動調整通知（docs/spec.md §5.7）。POSTのその場限りの通知で、
+// GET（履歴の一覧・再取得）では常に空配列になる
+export interface StockAdjustmentOut {
+  product_id: number
+  product_name: string
+  delta: number // 正なら増加、負なら減少
+  new_initial_stock: number
+}
+
 export interface SimulationSummary {
   id: number
   weather: Weather
@@ -31,6 +40,7 @@ export interface SimulationSummary {
   started_at: string
   finished_at: string | null
   finals: FinalOut[]
+  stock_adjustments: StockAdjustmentOut[]
 }
 
 export interface SimulationDetail extends SimulationSummary {
@@ -48,6 +58,7 @@ export interface Product {
   initial_stock: number
   elasticity: number
   prior_demand: Record<string, PriorDemand>
+  unit_price: number | null
 }
 
 export interface ProductCreateInput {
@@ -55,6 +66,7 @@ export interface ProductCreateInput {
   initial_stock: number
   elasticity: number
   base_demand: number
+  unit_price?: number | null
 }
 
 export interface Opportunity {
@@ -63,4 +75,24 @@ export interface Opportunity {
   occurrence_count: number
   avg_sellout_step: number
   avg_suggested_increase: number
+}
+
+export interface Overstock {
+  product_id: number
+  product_name: string
+  occurrence_count: number
+  avg_final_remaining: number
+  avg_suggested_decrease: number
+}
+
+// 在庫調整履歴（docs/spec.md §5.8）。stock_adjustmentsとは別に、
+// 発生した調整そのものは商品ごとに永続化され、GET /api/products/{id}/stock-adjustmentsで
+// 発生順（created_at昇順）に取得できる
+export interface StockAdjustmentLogEntry {
+  id: number
+  run_id: number
+  reason: 'opportunity' | 'overstock'
+  delta: number // 正なら増加、負なら減少
+  new_initial_stock: number
+  created_at: string
 }

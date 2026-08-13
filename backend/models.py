@@ -27,6 +27,9 @@ class Product(SQLModel, table=True):
     initial_stock: int
     elasticity: float  # 値引き10%あたりの需要増加倍率
     prior_demand: str  # JSON文字列（12キー、各 {"alpha": float, "beta": float}）
+    # 単価（円）。任意項目（docs/spec.md §6）。設定されている商品だけシミュレーション画面に
+    # 推定売上を表示する。既存のapp.dbには自動マイグレーションされないため再作成が必要
+    unit_price: int | None = None
 
 
 class SimulationRun(SQLModel, table=True):
@@ -53,7 +56,7 @@ class DiscountRecommendation(SQLModel, table=True):
     run_id: int = Field(foreign_key="simulationrun.id")
     product_id: int = Field(foreign_key="product.id")
     step: int
-    recommended_rate: float  # 0.0〜0.70
+    recommended_rate: float  # 0.0 / 0.30 / 0.50 / 0.75 のいずれか（services/simulation.py の DISCOUNT_TIERS）
     posterior_mean: float  # このときの事後分布の期待残数
 
 
@@ -63,3 +66,22 @@ class SimulationResult(SQLModel, table=True):
     product_id: int = Field(foreign_key="product.id")
     final_waste_rate: float
     achieved: bool
+    # この回を実行した時点の初期在庫のスナップショット（在庫の自動調整・§5.7で
+    # Product.initial_stockが後から変わっても、/opportunities・/overstockが過去のrunを
+    # 「実行当時と違う初期在庫」で誤って再評価しないようにするため）
+    initial_stock: int
+
+
+class StockAdjustmentLog(SQLModel, table=True):
+    """在庫の自動調整（§5.7）が発生するたびに1行残る履歴（§5.8）。
+    Product.initial_stockが「今いくつか」しか示さないのに対し、こちらは「どう変わってきたか」を
+    後から追うためのもの。商品を削除しても消さない（Productと同じ「履歴は消さない」方針）。
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    run_id: int = Field(foreign_key="simulationrun.id")
+    product_id: int = Field(foreign_key="product.id")
+    reason: str  # opportunity（機会損失で増加）/ overstock（過剰在庫で減少）
+    delta: int  # 正なら増加、負なら減少
+    new_initial_stock: int  # この調整の直後のProduct.initial_stock
+    created_at: datetime

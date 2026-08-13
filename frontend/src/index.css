@@ -8,7 +8,27 @@
   --line: #e8e2d9;
   --ok: #1a7f4e;
   --warn: #b23a2f;
+  --ok-weak: #e3f5ec;
+  --warn-weak: #fbe7e4;
+  --disabled: #c9beb1;
   font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', sans-serif;
+}
+
+/* ダークモード（docs/spec.md §4「全画面共通：ダークモード切り替え」）。
+   ThemeToggleがdocument.documentElementに立てるdata-theme属性で切り替わる */
+:root[data-theme='dark'] {
+  --brand: #ff7a3d;
+  --brand-weak: #402313;
+  --bg: #1c1a17;
+  --panel: #26231f;
+  --ink: #f0ece6;
+  --sub: #a89e8f;
+  --line: #3a352f;
+  --ok: #4ade80;
+  --warn: #ff8a75;
+  --ok-weak: #1c3a2a;
+  --warn-weak: #4a2622;
+  --disabled: #4a443c;
 }
 
 * {
@@ -55,6 +75,34 @@ body {
   border-bottom-color: var(--brand);
 }
 
+.theme-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--sub);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.insight-banner {
+  background: var(--warn-weak);
+  border-bottom: 1px solid var(--warn);
+  padding: 8px 24px;
+}
+
+.insight-banner-row {
+  font-size: 13px;
+  color: var(--warn);
+  padding: 2px 0;
+}
+
+.insight-banner-row a {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 main {
   max-width: 960px;
   margin: 0 auto;
@@ -90,6 +138,27 @@ main {
   padding: 4px;
 }
 
+.preset-buttons {
+  display: flex;
+  gap: 4px;
+  align-self: flex-end;
+}
+
+.preset-btn {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--sub);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.preset-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 button.primary {
   background: var(--brand);
   color: #fff;
@@ -101,7 +170,7 @@ button.primary {
 }
 
 button.primary:disabled {
-  background: #c9beb1;
+  background: var(--disabled);
   cursor: not-allowed;
 }
 
@@ -115,7 +184,7 @@ button.primary:disabled {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px 14px;
-  background: #fffefc;
+  background: var(--panel);
 }
 
 .product-card h3 {
@@ -138,12 +207,12 @@ button.primary:disabled {
 }
 
 .tag.ok {
-  background: #e3f5ec;
+  background: var(--ok-weak);
   color: var(--ok);
 }
 
 .tag.warn {
-  background: #fbe7e4;
+  background: var(--warn-weak);
   color: var(--warn);
 }
 
@@ -157,10 +226,22 @@ button.primary:disabled {
   margin: 8px 0;
 }
 
+.stock-adjustment-history-chart {
+  height: 90px;
+  margin: 6px 0;
+}
+
 .chart-caption {
   font-size: 11px;
   color: var(--sub);
   margin: 0;
+}
+
+.clock-display {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand);
+  margin: 0 0 8px;
 }
 
 .link-danger {
@@ -215,4 +296,10 @@ th {
 .error {
   color: var(--warn);
   font-size: 13px;
+}
+
+.hint {
+  flex-basis: 100%;
+  color: var(--sub);
+  font-size: 12px;
 }

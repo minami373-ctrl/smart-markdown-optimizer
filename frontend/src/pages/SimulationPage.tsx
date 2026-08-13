@@ -12,14 +12,20 @@ import { Line } from 'react-chartjs-2'
 import DistributionChart from '../components/DistributionChart'
 import { fetchProducts } from '../api/products'
 import { createSimulation } from '../api/simulations'
+import { stepToClockTime } from '../lib/clock'
 import { conditionKey } from '../lib/conditionKey'
+import { buildLearningCurveData } from '../lib/learningCurveData'
+import { computeRevenue } from '../lib/revenue'
 import { buildStockChartData } from '../lib/stockChartData'
+import { chartAxisColors, useTheme } from '../lib/useTheme'
 import type { DayType, Product, SimulationDetail, StepOut, Weather } from '../api/types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
 const STEP_INTERVAL_MS = 500
 const COLORS = ['#d9480f', '#1971c2', '#2f9e44']
+// 目標廃棄率のプリセットボタン（docs/spec.md §4①）。スライダーの値を直接書き換えるだけの補助UI
+const TARGET_WASTE_RATE_PRESETS = [0, 0.03, 0.05, 0.1]
 
 export default function SimulationPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -33,6 +39,11 @@ export default function SimulationPage() {
   const [detail, setDetail] = useState<SimulationDetail | null>(null)
   const [visibleStep, setVisibleStep] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 連続実行（docs/spec.md §4①「連続実行」・「学習曲線グラフ」）
+  const [batchCount, setBatchCount] = useState(5)
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [learningCurve, setLearningCurve] = useState<SimulationDetail[]>([])
 
   useEffect(() => {
     fetchProducts()
@@ -52,11 +63,14 @@ export default function SimulationPage() {
   }, [detail])
 
   async function handleStart() {
-    if (running) return // 二重開始防止（disabled属性の反映が間に合わない場合の保険）
+    if (running || batchRunning) return // 二重開始防止（disabled属性の反映が間に合わない場合の保険）
     setError(null)
     setRunning(true)
     setDetail(null)
     setVisibleStep(0)
+    // 直前の連続実行の学習曲線グラフが、条件を変えた単発実行後も残り続けないようにする
+    // （「今表示されている条件・結果」と学習曲線グラフの中身が食い違って見えるのを防ぐ）
+    setLearningCurve([])
     try {
       const result = await createSimulation({
         weather,
@@ -65,9 +79,48 @@ export default function SimulationPage() {
         target_waste_rate: targetWasteRate,
       })
       setDetail(result)
+      // 学習の継続（docs/spec.md §2・§5.2 step4）：今回の実行で事前分布が書き換わっているため、
+      // 次に同条件で実行したときの開店直後フォールバック表示（priorDistributionFor）が
+      // 古い値のままにならないよう取り直す。失敗しても結果表示自体は継続する
+      fetchProducts()
+        .then(setProducts)
+        .catch(() => {})
     } catch (e) {
       setError(e instanceof Error ? e.message : '実行に失敗しました')
       setRunning(false)
+    }
+  }
+
+  async function handleBatchRun() {
+    if (running || batchRunning) return
+    setError(null)
+    setBatchRunning(true)
+    setLearningCurve([])
+    try {
+      const results: SimulationDetail[] = []
+      // 学習の継続は前の回がDBにコミットされて初めて次の事前分布に反映されるため、
+      // 直列で（前の回の完了を待ってから次を呼ぶ）実行する（docs/spec.md §4①）
+      for (let i = 0; i < batchCount; i++) {
+        const result = await createSimulation({
+          weather,
+          day_type: dayType,
+          has_event: hasEvent,
+          target_waste_rate: targetWasteRate,
+        })
+        results.push(result)
+      }
+      setLearningCurve(results)
+      // 最後の1回は通常の営業開始と同じアニメーションで再生する（既存のuseEffectに乗せる）
+      setRunning(true)
+      setDetail(results[results.length - 1])
+      setVisibleStep(0)
+      fetchProducts()
+        .then(setProducts)
+        .catch(() => {})
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '連続実行に失敗しました')
+    } finally {
+      setBatchRunning(false)
     }
   }
 
@@ -123,7 +176,11 @@ export default function SimulationPage() {
         <div className="form-row">
           <label>
             天気
-            <select value={weather} onChange={(e) => setWeather(e.target.value as Weather)} disabled={running}>
+            <select
+              value={weather}
+              onChange={(e) => setWeather(e.target.value as Weather)}
+              disabled={running || batchRunning}
+            >
               <option value="晴れ">晴れ</option>
               <option value="曇り">曇り</option>
               <option value="雨">雨</option>
@@ -131,7 +188,11 @@ export default function SimulationPage() {
           </label>
           <label>
             曜日
-            <select value={dayType} onChange={(e) => setDayType(e.target.value as DayType)} disabled={running}>
+            <select
+              value={dayType}
+              onChange={(e) => setDayType(e.target.value as DayType)}
+              disabled={running || batchRunning}
+            >
               <option value="平日">平日</option>
               <option value="休日">休日</option>
             </select>
@@ -142,7 +203,7 @@ export default function SimulationPage() {
               type="checkbox"
               checked={hasEvent}
               onChange={(e) => setHasEvent(e.target.checked)}
-              disabled={running}
+              disabled={running || batchRunning}
             />
           </label>
           <label>
@@ -154,20 +215,63 @@ export default function SimulationPage() {
               step={0.01}
               value={targetWasteRate}
               onChange={(e) => setTargetWasteRate(Number(e.target.value))}
-              disabled={running}
+              disabled={running || batchRunning}
             />
           </label>
-          <button className="primary" onClick={handleStart} disabled={running}>
+          <span className="preset-buttons">
+            {TARGET_WASTE_RATE_PRESETS.map((rate) => (
+              <button
+                key={rate}
+                type="button"
+                className="preset-btn"
+                onClick={() => setTargetWasteRate(rate)}
+                disabled={running || batchRunning}
+              >
+                {Math.round(rate * 100)}%
+              </button>
+            ))}
+          </span>
+          <button className="primary" onClick={handleStart} disabled={running || batchRunning}>
             {running ? '営業中…' : '営業開始'}
+          </button>
+        </div>
+        <div className="form-row">
+          <label>
+            連続実行（同条件で学習を進める）
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={batchCount}
+              onChange={(e) => setBatchCount(Number(e.target.value))}
+              disabled={running || batchRunning}
+            />
+          </label>
+          <button
+            onClick={handleBatchRun}
+            disabled={
+              running ||
+              batchRunning ||
+              !Number.isInteger(batchCount) ||
+              batchCount < 1 ||
+              batchCount > 10
+            }
+          >
+            {batchRunning ? '連続実行中…' : '連続実行'}
           </button>
         </div>
         {error && <p className="error">{error}</p>}
       </div>
 
+      {detail && totalSteps > 0 && (
+        <p className="clock-display">現在 {stepToClockTime(visibleStep, totalSteps)}</p>
+      )}
+
       <div className="product-grid">
         {products.map((p, i) => {
           const step = latestStepFor(p.id)
           const finalResult = detail?.finals.find((f) => f.product_id === p.id)
+          const stockAdjustment = detail?.stock_adjustments.find((a) => a.product_id === p.id)
           const distribution =
             step?.posterior_alpha != null && step?.posterior_beta != null
               ? { alpha: step.posterior_alpha, beta: step.posterior_beta }
@@ -201,6 +305,23 @@ export default function SimulationPage() {
                   <span className={`tag ${finalResult.achieved ? 'ok' : 'warn'}`}>
                     {finalResult.achieved ? '目標達成' : '目標未達'}
                   </span>
+                  {p.unit_price != null && detail && (
+                    <p>
+                      推定売上: ¥
+                      {Math.round(
+                        computeRevenue(
+                          detail.steps.filter((s) => s.product_id === p.id),
+                          p.unit_price,
+                        ),
+                      ).toLocaleString()}
+                    </p>
+                  )}
+                  {stockAdjustment && (
+                    <p className="chart-caption">
+                      在庫を自動調整：{stockAdjustment.delta > 0 ? '+' : ''}
+                      {stockAdjustment.delta}個（次回の初期在庫 {stockAdjustment.new_initial_stock}個）
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -209,6 +330,7 @@ export default function SimulationPage() {
       </div>
 
       {detail && <StockChart detail={detail} visibleStep={visibleStep} />}
+      {learningCurve.length > 0 && <LearningCurveChart runs={learningCurve} />}
     </div>
   )
 }
@@ -218,6 +340,8 @@ export default function SimulationPage() {
  * 商品名は`RateChart`と同じく`detail.finals`（実行時点のスナップショット）から解決する。
  * 実行中に別画面で商品が削除されても、他のカードの表示（`finalResult`）と名前がずれない */
 function StockChart({ detail, visibleStep }: { detail: SimulationDetail; visibleStep: number }) {
+  const theme = useTheme()
+  const axisColors = chartAxisColors(theme)
   const nameSource = detail.finals.map((f) => ({ id: f.product_id, name: f.product_name }))
   const { labels, series } = buildStockChartData(detail.steps, nameSource, visibleStep)
 
@@ -250,7 +374,65 @@ function StockChart({ detail, visibleStep }: { detail: SimulationDetail; visible
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false }, tooltip: { enabled: false } },
-            scales: { y: { title: { display: true, text: '残り在庫数' }, beginAtZero: true } },
+            scales: {
+              x: { ticks: { color: axisColors.tick }, grid: { color: axisColors.grid } },
+              y: {
+                title: { display: true, text: '残り在庫数', color: axisColors.tick },
+                beginAtZero: true,
+                ticks: { color: axisColors.tick },
+                grid: { color: axisColors.grid },
+              },
+            },
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** 連続実行の結果を学習曲線として折れ線で描く（docs/spec.md §4①「学習曲線グラフ」）。
+ * 横軸=実行回、縦軸=実績廃棄率(%)。StockChartと同じく凡例は自前で描き、legend/tooltipは無効化する
+ * （jsdomでのLine描画クラッシュを避けるため。SimulationPage.test.tsxのvi.mockコメント参照）。 */
+function LearningCurveChart({ runs }: { runs: SimulationDetail[] }) {
+  const theme = useTheme()
+  const axisColors = chartAxisColors(theme)
+  const { labels, series } = buildLearningCurveData(runs)
+
+  const datasets = series.map((s, i) => ({
+    label: s.name,
+    data: s.data,
+    borderColor: COLORS[i % COLORS.length],
+    backgroundColor: COLORS[i % COLORS.length],
+    tension: 0.1,
+  }))
+
+  return (
+    <div className="card">
+      <h2>学習曲線（連続実行 {runs.length}回）</h2>
+      <p className="chart-caption">
+        {series.map((s, i) => (
+          <span key={s.productId} style={{ color: COLORS[i % COLORS.length], marginRight: 12 }}>
+            ● {s.name}
+          </span>
+        ))}
+      </p>
+      <div className="stock-chart">
+        <Line
+          data={{ labels, datasets }}
+          options={{
+            animation: false,
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: {
+              x: { ticks: { color: axisColors.tick }, grid: { color: axisColors.grid } },
+              y: {
+                title: { display: true, text: '実績廃棄率(%)', color: axisColors.tick },
+                beginAtZero: true,
+                ticks: { color: axisColors.tick },
+                grid: { color: axisColors.grid },
+              },
+            },
           }}
         />
       </div>

@@ -202,6 +202,119 @@ def test_get_simulation_survives_deleted_product(session: Session, client: TestC
     assert "?" in names
 
 
+def test_simulation_updates_prior_demand_for_matching_condition(
+    session: Session, client: TestClient
+) -> None:
+    """学習の継続（docs/spec.md §2「学習の継続」・§5.2 step4）：終了時点の事後分布が、
+    同じ条件の次回シミュレーションの事前分布として書き戻される。"""
+    _add_products(session)
+    key = "晴れ_平日_なし"  # VALID_BODY の条件
+
+    first = client.post("/api/simulations", json=VALID_BODY).json()
+    product_id = first["finals"][0]["product_id"]
+    first_final_step = max(
+        (s for s in first["steps"] if s["product_id"] == product_id), key=lambda s: s["step"]
+    )
+
+    products_after_first = client.get("/api/products").json()
+    updated = next(p for p in products_after_first if p["id"] == product_id)
+    assert updated["prior_demand"][key]["alpha"] == first_final_step["posterior_alpha"]
+    assert updated["prior_demand"][key]["beta"] == first_final_step["posterior_beta"]
+
+    # 2回目は1回目終了時点の事後分布から始まる。betaは毎ステップ必ず増える（露出が積み上がる
+    # ため0にはならない）ので、2回目のstep0の時点で既に1回目の最終betaを上回っている
+    second = client.post("/api/simulations", json=VALID_BODY).json()
+    second_first_step = min(
+        (s for s in second["steps"] if s["product_id"] == product_id), key=lambda s: s["step"]
+    )
+    assert second_first_step["posterior_alpha"] >= first_final_step["posterior_alpha"]
+    assert second_first_step["posterior_beta"] > first_final_step["posterior_beta"]
+
+
+def test_simulation_does_not_change_other_conditions_prior(
+    session: Session, client: TestClient
+) -> None:
+    """実行した条件キー以外の11条件の事前分布は変化しない（docs/spec.md §5.2 step4）。"""
+    _add_products(session)
+    before = {p["id"]: p["prior_demand"] for p in client.get("/api/products").json()}
+
+    client.post("/api/simulations", json=VALID_BODY)  # 条件: 晴れ_平日_なし
+
+    after = {p["id"]: p["prior_demand"] for p in client.get("/api/products").json()}
+    for product_id, prior in after.items():
+        for other_key in ("雨_平日_なし", "晴れ_休日_あり"):
+            assert prior[other_key] == before[product_id][other_key]
+
+
+def _add_single_product(
+    session: Session, *, initial_stock: int, alpha: float, elasticity: float = 0.12
+) -> Product:
+    prior = {"晴れ_平日_なし": {"alpha": alpha, "beta": 2.0}}
+    product = Product(
+        name="テスト商品",
+        initial_stock=initial_stock,
+        elasticity=elasticity,
+        prior_demand=json.dumps(prior, ensure_ascii=False),
+    )
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return product
+
+
+def test_stock_auto_increases_on_early_sellout(session: Session, client: TestClient) -> None:
+    """docs/spec.md §5.7：早期完売した商品はその場でinitial_stockが自動で増える。"""
+    product = _add_single_product(session, initial_stock=5, alpha=20.0)  # 需要が非常に高い
+
+    res = client.post("/api/simulations", json=VALID_BODY)
+
+    assert res.status_code == 200
+    body = res.json()
+    adjustments = {a["product_id"]: a for a in body["stock_adjustments"]}
+    assert product.id in adjustments, f"stock_adjustments: {body['stock_adjustments']}"
+    assert adjustments[product.id]["delta"] > 0
+    assert adjustments[product.id]["new_initial_stock"] > 5
+
+    updated = next(p for p in client.get("/api/products").json() if p["id"] == product.id)
+    assert updated["initial_stock"] == adjustments[product.id]["new_initial_stock"]
+
+
+def test_stock_auto_decreases_on_overstock(session: Session, client: TestClient) -> None:
+    """docs/spec.md §5.7：最大値引きしても売れ残った商品はinitial_stockが自動で減る。"""
+    product = _add_single_product(session, initial_stock=100, alpha=0.5)  # 需要が非常に低い
+
+    res = client.post(
+        "/api/simulations",
+        json={"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.0},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    adjustments = {a["product_id"]: a for a in body["stock_adjustments"]}
+    assert product.id in adjustments, f"stock_adjustments: {body['stock_adjustments']}"
+    assert adjustments[product.id]["delta"] < 0
+    assert adjustments[product.id]["new_initial_stock"] < 100
+
+    updated = next(p for p in client.get("/api/products").json() if p["id"] == product.id)
+    assert updated["initial_stock"] == adjustments[product.id]["new_initial_stock"]
+
+
+def test_get_simulations_always_have_empty_stock_adjustments(
+    session: Session, client: TestClient
+) -> None:
+    """docs/spec.md §5.7：在庫の自動調整はその場限りの通知で、履歴には残さない
+    （GET系のレスポンスでは常に空配列）。"""
+    _add_single_product(session, initial_stock=5, alpha=20.0)
+    created = client.post("/api/simulations", json=VALID_BODY).json()
+    assert created["stock_adjustments"] != []  # このシミュレーション自体には調整が起きている前提
+
+    list_res = client.get("/api/simulations").json()
+    assert all(r["stock_adjustments"] == [] for r in list_res)
+
+    detail_res = client.get(f"/api/simulations/{created['id']}").json()
+    assert detail_res["stock_adjustments"] == []
+
+
 def test_deleted_product_id_is_not_reused_by_sqlite(
     session: Session, client: TestClient
 ) -> None:

@@ -1,5 +1,7 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+// 'vite'ではなく'vitest/config'から読む（Vitest公式の方法）。'vite'のdefineConfigは
+// `test`キー（Vitestの設定拡張）を型として知らず、tsc -bで型エラーになるため
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],

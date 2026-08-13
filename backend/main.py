@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from db import init_db
-from routers import opportunities, products, simulations
+from routers import opportunities, overstock, products, simulations
 
 
 @asynccontextmanager
@@ -18,3 +18,4 @@ app = FastAPI(title="見切り品ダイナミックプライシング・シミ�
 app.include_router(products.router)
 app.include_router(simulations.router)
 app.include_router(opportunities.router)
+app.include_router(overstock.router)

@@ -24,6 +24,7 @@ def load_products(session: Session) -> int:
                 initial_stock=item["initial_stock"],
                 elasticity=item["elasticity"],
                 prior_demand=json.dumps(item["prior_demand"], ensure_ascii=False),
+                unit_price=item.get("unit_price"),  # 未指定なら None（後方互換）
             )
         )
     session.commit()
