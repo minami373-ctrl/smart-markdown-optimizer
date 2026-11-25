@@ -10,10 +10,21 @@ DB もネットワークも触らない純関数の集まり。ガンマ分布�
 という誤判定でいきなり最大値引き（75%）が提案される不具合があった。平均は観測が少なくても
 0に潰れないため、序盤は緩やかに様子を見る判定になる。
 
-さらに、完売後もベイズ更新を続けない（§5.2 step2b。打ち切りデータの扱い）・開店直後の
-様子見期間（GRACE_PERIOD_STEPS。§5.3）の2つも同日に追加した。値引きは下げない仕様
-（単調増加）のため、序盤にたまたま数ステップ売れなかっただけで大きな値引きに固定されて
-しまうケースが実測で確認され、これを緩和するための一連の修正。
+さらに、完売後もベイズ更新を続けない（§5.2 step2b。打ち切りデータの扱い）も同日に追加した。
+値引きは下げない仕様（単調増加）のため、序盤にたまたま数ステップ売れなかっただけで大きな
+値引きに固定されてしまうケースが実測で確認され、これを緩和するための修正。
+
+値引きが必要かどうかの「判定」と「値引き幅の計算」を分離した（2026-08-15改訂。docs/spec.md
+§5.3）。以前は「事後分布の平均から残り時間の必要ペースを毎ステップ計算し直す」という
+見込みベースの判定だったが、実店舗の感覚（まだ実際に売れ残っているか確定していないのに
+先回りして値引きを決めているように見える）と合わないという指摘を受けた。判定は
+「実際に売れた個数」対「目標ペースで売れているべき個数」という実績ベースに変え、
+判定を通った場合の値引き幅の計算だけに事後分布の平均を使う。これに伴い、旧来の
+GRACE_PERIOD_STEPS（開店直後の様子見期間）は実績ベースの判定に役割を吸収されたため削除した。
+
+値引き感度（elasticity）による需要倍率の式も比例から2乗に変更した（2026-08-15改訂）。
+「半額になった瞬間に速攻売れる」という実店舗の感覚に対し、比例の式では大きい値引きの
+効きが弱すぎたため。
 """
 
 import random
@@ -23,11 +34,6 @@ STEPS = 40
 DISCOUNT_STEP_UNIT = 0.10  # 値引き感度(elasticity)は「値引き10%あたり」の倍率として定義されている
 MIN_DISCOUNT = 0.0
 MAX_DISCOUNT = 0.75
-#: 開店直後のこのステップ数（0始まりでstep < GRACE_PERIOD_STEPS）は値引き提案の計算を行わない
-#: （docs/spec.md §5.3「開店直後の様子見期間」）。購入生成・事後分布の更新は通常どおり続ける。
-#: 値引きは下げない仕様（単調増加）のため、序盤にたまたま数ステップ売れなかっただけで
-#: 大きな値引きに固定されてしまうのを防ぐ
-GRACE_PERIOD_STEPS = 5
 #: 前回提案からこの幅（%pt）以上変化しないと新しい提案として記録しない。
 #: DISCOUNT_TIERS導入後は隣接する刻み同士の差（最小20pt）が必ずこれを上回るため、
 #: 実質「刻みが変わったかどうか」と同じ判定になっている（意図的な残置。壊れてはいない）
@@ -35,6 +41,12 @@ MIN_RATE_CHANGE = 0.05
 #: 実店舗の値引きシールが「30%引き・半額・75%引き」の3段階しか無い、という
 #: この企画の出発点（docs/spec.md §1）に合わせた値引きの刻み（§5.3）
 DISCOUNT_TIERS: tuple[float, ...] = (0.0, 0.30, 0.50, MAX_DISCOUNT)
+#: 値引きを検討し始める閾値（docs/spec.md §5.3「トリガー：見込みではなく実際の遅れで判定する」）。
+#: 「実際に売れた個数」が「目標ペースで売れているべき個数（初期在庫の目標達成分×経過割合）」
+#: よりinitial_stockのこの割合以上少なければ値引き幅の計算に進む。2026-08-15追加。
+#: 数ステップぶんの偶然のブレでは反応しないための遊びで、開店直後は目標ペース自体が小さいため
+#: このマージンだけで序盤の過敏な反応も抑えられる（旧GRACE_PERIOD_STEPSの役割を吸収した）
+SHORTFALL_MARGIN_RATE = 0.15
 
 
 def condition_key(weather: str, day_type: str, has_event: bool) -> str:
@@ -42,8 +54,13 @@ def condition_key(weather: str, day_type: str, has_event: bool) -> str:
 
 
 def discount_multiplier(discount_rate: float, elasticity: float) -> float:
-    """値引き率から需要の倍率を返す。0%引きなら1.0倍。"""
-    return 1.0 + elasticity * (discount_rate / DISCOUNT_STEP_UNIT)
+    """値引き率から需要の倍率を返す。0%引きなら1.0倍。
+
+    値引きの刻み(10%単位)ぶんの2乗で効かせる（2026-08-15改訂。docs/spec.md §5.3）。
+    以前は比例（1乗）だったが、「半額になった瞬間に速攻売れる」という実店舗の感覚に対し
+    効きが弱すぎたため、大きい値引きほど急激に需要が伸びる非線形な式に変更した。
+    """
+    return 1.0 + elasticity * (discount_rate / DISCOUNT_STEP_UNIT) ** 2
 
 
 @dataclass
@@ -84,6 +101,32 @@ class ProductFinalResult:
 class SimulationOutcome:
     steps: list[ProductStepResult] = field(default_factory=list)
     finals: list[ProductFinalResult] = field(default_factory=list)
+
+
+def _is_behind_pace(
+    actual_sold: int,
+    initial_stock: int,
+    target_waste_stock: float,
+    elapsed_steps: int,
+    total_steps: int,
+) -> bool:
+    """「実際に売れた個数」が「目標ペースで売れているべき個数」より
+    `SHORTFALL_MARGIN_RATE`ぶん以上少なければTrue（docs/spec.md §5.3「トリガー」）。
+
+    「目標ペースで売れているべき個数」は、目標廃棄率を満たすために必要な販売数
+    （initial_stock - target_waste_stock）を、開店から閉店まで一定のペースで売ると
+    仮定して経過ステップの割合ぶんだけ直線的に案分した値。事後分布などの統計的な見込みは
+    一切使わず、その回で実際に生成された購入ログの数（actual_sold）だけを見る。
+    """
+    if total_steps <= 0:
+        return False
+    units_to_sell_total = initial_stock - target_waste_stock
+    if units_to_sell_total <= 0:
+        return False
+    expected_sold_by_now = units_to_sell_total * (elapsed_steps / total_steps)
+    shortfall = expected_sold_by_now - actual_sold
+    margin = initial_stock * SHORTFALL_MARGIN_RATE
+    return shortfall > margin
 
 
 def _required_discount_rate(
@@ -189,18 +232,24 @@ def run_simulation(
             else:
                 quantity = 0
 
-            # 3) 次の値引き率を計算。事後分布の平均（期待値）を使う（2026-08-14改訂。
-            #    以前はMAP推定＝最頻値を使っていたが、alpha<=1で0に潰れて「一日中売れない」
-            #    と誤判定し、いきなり最大値引きが提案される不具合があったため変更した）
+            # 3) 次の値引き率を計算。「判定」と「値引き幅」を分離した（2026-08-15改訂。
+            #    docs/spec.md §5.3）。判定は実際に売れた個数と目標ペースの比較（統計的な
+            #    見込みを使わない、実績ベース）。値引き幅の計算だけ事後分布の平均を使う
             updated_mean = state["alpha"] / state["beta"]
-            if step < GRACE_PERIOD_STEPS:
-                # 開店直後の様子見期間（docs/spec.md §5.3）：序盤にたまたま数ステップ
-                # 売れなかっただけで、単調増加ルールのせいで最後まで大きな値引きに
-                # 固定されてしまうのを防ぐ。この間は値引き提案の計算そのものを行わない
-                # （観測・事後分布の更新は上記のとおり通常どおり続けている）
+            target_waste_stock = target_waste_rate * p.initial_stock
+            actual_sold = p.initial_stock - state["remaining"]
+            behind_pace = _is_behind_pace(
+                actual_sold=actual_sold,
+                initial_stock=p.initial_stock,
+                target_waste_stock=target_waste_stock,
+                elapsed_steps=step + 1,
+                total_steps=steps,
+            )
+            if not behind_pace:
+                # まだ目標ペースの範囲内（またはマージン内の軽微な遅れ）なので、
+                # 値引き幅の計算そのものを行わない（見込みで先回りしない）
                 continuous_rate = 0.0
             else:
-                target_waste_stock = target_waste_rate * p.initial_stock
                 continuous_rate = _required_discount_rate(
                     remaining_stock=state["remaining"],
                     remaining_steps=remaining_steps - 1,

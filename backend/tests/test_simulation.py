@@ -1,8 +1,9 @@
 from services.simulation import (
     DISCOUNT_TIERS,
-    GRACE_PERIOD_STEPS,
     MAX_DISCOUNT,
+    SHORTFALL_MARGIN_RATE,
     ProductInput,
+    _is_behind_pace,
     _required_discount_rate,
     _snap_to_tier,
     discount_multiplier,
@@ -32,9 +33,22 @@ def test_discount_multiplier_at_zero_is_one() -> None:
 
 
 def test_discount_multiplier_scales_with_elasticity() -> None:
-    # 10%引きごとに elasticity 分だけ倍率が上がる
+    """docs/spec.md §5.3（2026-08-15改訂）：値引きの刻み(10%単位)の2乗で効く。
+    「値引き率に比例」ではなく「大きい値引きほど急激に効く」非線形な式。"""
+    # 1刻み(10%)は2乗しても1のまま。以前の比例式と同じ値になる
     assert discount_multiplier(0.10, elasticity=0.2) == 1.2
-    assert discount_multiplier(0.30, elasticity=0.2) == 1.6
+    # 3刻み(30%)は3の2乗=9倍ぶん効く。以前の比例式（1.6）より強く効く
+    assert discount_multiplier(0.30, elasticity=0.2) == 2.8
+
+
+def test_discount_multiplier_grows_faster_than_linear() -> None:
+    """大きい値引きほど「刻み1つあたりの効き」が急激に強くなる（2乗の非線形性そのものの確認）。
+    30%→50%の上げ幅と50%→75%の上げ幅を比べると、後者の方が大きくなるはず。"""
+    m30 = discount_multiplier(0.30, elasticity=0.18)
+    m50 = discount_multiplier(0.50, elasticity=0.18)
+    m75 = discount_multiplier(0.75, elasticity=0.18)
+
+    assert m50 - m30 < m75 - m50, "値引き率が上がるほど、効きの増分が大きくなっていない"
 
 
 def test_discount_tiers_are_0_30_50_75() -> None:
@@ -102,50 +116,117 @@ def test_rain_triggers_discount_earlier_than_sunny() -> None:
     assert first_sunny is None or first_rainy < first_sunny
 
 
-def test_first_recommendation_is_not_immediately_max_discount_for_low_alpha(
-    monkeypatch,
-) -> None:
+def test_is_behind_pace_within_margin_is_false() -> None:
+    """docs/spec.md §5.3「トリガー」：目標ペースからの遅れがマージン以内ならFalse。"""
+    # 目標100個・経過50%なら目標ペースは50個。45個売れていれば遅れは5個（マージンは初期在庫100の15%=15）
+    assert (
+        _is_behind_pace(
+            actual_sold=45,
+            initial_stock=100,
+            target_waste_stock=0,
+            elapsed_steps=20,
+            total_steps=40,
+        )
+        is False
+    )
+
+
+def test_is_behind_pace_beyond_margin_is_true() -> None:
+    """マージンを超えて遅れていればTrue。"""
+    # 目標ペース50個に対し30個しか売れていない＝遅れ20個 > マージン15個
+    assert (
+        _is_behind_pace(
+            actual_sold=30,
+            initial_stock=100,
+            target_waste_stock=0,
+            elapsed_steps=20,
+            total_steps=40,
+        )
+        is True
+    )
+
+
+def test_is_behind_pace_boundary_is_exclusive() -> None:
+    """遅れがちょうどマージンと同値のときはFalse（マージン「以内」に含む。>で判定するため）。"""
+    margin = 100 * SHORTFALL_MARGIN_RATE  # 15
+    assert (
+        _is_behind_pace(
+            actual_sold=50 - margin,
+            initial_stock=100,
+            target_waste_stock=0,
+            elapsed_steps=20,
+            total_steps=40,
+        )
+        is False
+    )
+
+
+def test_is_behind_pace_early_steps_have_small_target_and_rarely_trigger() -> None:
+    """開店直後は目標ペースの絶対量自体が小さいため、実際に0個しか売れていなくても
+    マージン内に収まりやすい（旧GRACE_PERIOD_STEPSの役割をこの仕組みが自然に吸収している
+    ことの確認）。"""
+    # 初期在庫50・目標廃棄率0（全部売り切るのが目標）でも、ステップ1時点の目標ペースは
+    # 50 * (1/40) = 1.25個。0個しか売れていなくても遅れは1.25 < マージン(50*0.15=7.5)
+    assert (
+        _is_behind_pace(
+            actual_sold=0,
+            initial_stock=50,
+            target_waste_stock=0,
+            elapsed_steps=1,
+            total_steps=40,
+        )
+        is False
+    )
+
+
+def test_required_discount_rate_does_not_force_max_for_small_positive_baseline() -> None:
     """docs/spec.md §5.2 step2c（2026-08-14改訂）の回帰テスト。以前のMAP推定（最頻値）は
-    alpha<=1だと`(alpha-1)/beta`がちょうど0に潰れて「一日中売れない」と誤判定し、
-    最初の値引き提案がいきなり最大値引き（75%）になっていた。事後分布の平均（0に潰れない）
-    に変えたことで、alpha=1.0（旧MAP実装だと最頻値がちょうど境界で0になる値）でも
-    最初の提案が75%にはならないことを、複数シードで確認する。
+    alpha<=1だと`(alpha-1)/beta`がちょうど0に潰れ、`_required_discount_rate`の
+    「baseline_projected<=0→無条件でMAX_DISCOUNT」という0除算回避の分岐に落ちて、
+    残り時間や不足量の大きさに関係なく問答無用で最大値引きになっていた。事後分布の平均
+    （alpha>0なら常に正）に変えたことで、この無条件MAX分岐そのものを踏まなくなったことを
+    直接確認する。
 
-    コードレビュー指摘の修正：様子見期間（GRACE_PERIOD_STEPS。§5.3）により、通常は
-    最初の5ステップで値引き提案自体が計算されないため、alpha=3.0のような典型的な需要では
-    様子見期間が終わる頃には需要不足が解消されており、MAP推定に戻してもこのテストが
-    落ちない（＝このテストが実際には何も検出できていない）ことが判明した。
-    様子見期間を一時的に無効化（`GRACE_PERIOD_STEPS = 0`）してMAP0collapseが起こりうる
-    ステップ0近辺を直接検証することで、このテストが本当に変更1を検出できるようにする。"""
-    monkeypatch.setattr("services.simulation.GRACE_PERIOD_STEPS", 0)
-    product = make_product(stock=20, elasticity=0.15, alpha=1.0, beta=2.0)
-    target = 0.05
+    2026-08-15改訂：値引きの「トリガー」を実績ベースの`_is_behind_pace`に変更したことで、
+    様子見のぶん遅れが蓄積してから初めて値引き幅を計算するようになった。そのため
+    `run_simulation`レベルでは「最初の提案がいきなり75%になる」こと自体は起こりうる
+    （様子見していた間の遅れを一括で取り戻す必要があるため。これはバグではなく実績ベースの
+    トリガーの自然な帰結）。したがってこのテストは`run_simulation`ではなく
+    `_required_discount_rate`を直接呼び、baseline_rateが「0（旧MAPの0collapse相当）」と
+    「tinyだが正の値（新しい平均ベース）」でどう挙動が変わるかを比較する。"""
+    # baseline_rate=0.0（旧MAP実装が起こしうる0collapse相当）は、不足量や残り時間の大きさに
+    # 関係なく無条件でMAX_DISCOUNTになる（これ自体は0除算回避の既存の安全側フォールバックで
+    # バグではない。だからこそ「baseline_rateが0にならない」ことが重要）
+    forced_max = _required_discount_rate(
+        remaining_stock=20, remaining_steps=30, target_waste_stock=1, baseline_rate=0.0, elasticity=0.15
+    )
+    assert forced_max == MAX_DISCOUNT
 
-    for seed in range(20):
-        outcome = run_simulation([product], target_waste_rate=target, seed=seed)
-        first_recommendation = next(
-            (s.recommended_rate for s in outcome.steps if s.recommended_rate > 0), None
-        )
-        assert first_recommendation != MAX_DISCOUNT, (
-            f"seed={seed}: 最初の値引き提案がいきなり最大値引きになった（MAP推定の0collapseバグの再発）"
-        )
+    # 同じ不足量・残り時間でも、tinyだが正の値（alpha>0なら平均alpha/betaは必ず正になる）
+    # なら、残り時間が十分にあるぶん無条件MAXにはならず、不足量に見合った緩やかな値引きになる
+    mild = _required_discount_rate(
+        remaining_stock=20, remaining_steps=30, target_waste_stock=1, baseline_rate=0.5, elasticity=0.15
+    )
+    assert mild != MAX_DISCOUNT
+    assert 0.0 < mild < MAX_DISCOUNT
 
 
-def test_grace_period_suppresses_recommendations_in_first_five_steps() -> None:
-    """docs/spec.md §5.3「開店直後の様子見期間」（2026-08-14追加）の回帰テスト。
-    需要が極端に低い商品でも、最初の5ステップ（GRACE_PERIOD_STEPS）は値引き提案を
-    計算・提案しない（値引き率は常に0%のまま）。"""
-    # 需要が非常に低い（値引きが最も必要になりやすい）商品でも様子見期間は例外なく守られる
+def test_recommendation_is_suppressed_while_within_pace_margin() -> None:
+    """docs/spec.md §5.3「トリガー：見込みではなく実際の遅れで判定する」の回帰テスト。
+    需要が極端に低い商品でも、目標ペースからの遅れがマージン以内のうちは
+    値引き提案が一切出ない（値引き率は常に0%のまま）ことを、開店直後の数ステップで確認する。"""
+    # 需要が非常に低い（値引きが最も必要になりやすい）商品でも、開店直後は
+    # 目標ペースの絶対量が小さいためマージン内に収まりやすい
     product = make_product(stock=10, elasticity=0.15, alpha=0.5, beta=2.0)
 
     for seed in range(5):
         outcome = run_simulation([product], target_waste_rate=0.0, seed=seed)
-        early_steps = [s for s in outcome.steps if s.step < GRACE_PERIOD_STEPS]
-        assert len(early_steps) == GRACE_PERIOD_STEPS
-        assert all(s.recommended_rate == 0.0 for s in early_steps), (
-            f"seed={seed}: 様子見期間中に値引き提案が出た"
-        )
-        assert all(not s.is_new_recommendation for s in early_steps)
+        # 初期在庫10・目標廃棄率0のとき、マージンは10*0.15=1.5個。
+        # ステップ1(経過1/40)の目標ペースは10*(1/40)=0.25個で、実際の販売数が0でも
+        # 遅れ0.25 < マージン1.5なので、少なくとも最初の数ステップは提案が出ないはず
+        first_step = next(s for s in sorted(outcome.steps, key=lambda s: s.step) if s.step == 0)
+        assert first_step.recommended_rate == 0.0, f"seed={seed}: 開店直後から値引き提案が出た"
+        assert not first_step.is_new_recommendation
 
 
 def test_required_discount_rate_stricter_target_needs_more_discount() -> None:

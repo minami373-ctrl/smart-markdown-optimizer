@@ -4,6 +4,8 @@ import ProductsPage from './pages/ProductsPage'
 import HistoryPage from './pages/HistoryPage'
 import OpportunitiesPage from './pages/OpportunitiesPage'
 import OverstockPage from './pages/OverstockPage'
+import ComparisonPage from './pages/ComparisonPage'
+import TimingPage from './pages/TimingPage'
 import InsightsBanner from './components/InsightsBanner'
 import ThemeToggle from './components/ThemeToggle'
 
@@ -20,6 +22,8 @@ export default function App() {
           <NavLink to="/history">履歴</NavLink>
           <NavLink to="/opportunities">機会損失分析</NavLink>
           <NavLink to="/overstock">過剰在庫分析</NavLink>
+          <NavLink to="/compare">固定スケジュール比較</NavLink>
+          <NavLink to="/timing">値引きタイミング傾向</NavLink>
         </nav>
         <ThemeToggle />
       </header>
@@ -31,6 +35,8 @@ export default function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />
           <Route path="/overstock" element={<OverstockPage />} />
+          <Route path="/compare" element={<ComparisonPage />} />
+          <Route path="/timing" element={<TimingPage />} />
         </Routes>
       </main>
     </div>

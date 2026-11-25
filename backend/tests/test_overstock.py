@@ -92,17 +92,25 @@ def test_rank_overstocks_averages_multiple_occurrences() -> None:
 
 def test_detect_overstock_against_real_run_simulation_output() -> None:
     """低い需要・大きい在庫の組み合わせで、実際のrun_simulationが最大値引きまで下げても
-    売り切れないケースを生成することを確認する（detect_overstockの前提が現実と一致するか）。"""
+    売り切れないケースを生成することを確認する（detect_overstockの前提が現実と一致するか）。
+
+    elasticity=0.02という低めの値を使うのは、値引き感度の式が2乗（docs/spec.md §5.3
+    「値引き感度：大きい値引きほど急激に効く」。2026-08-15改訂）になったことで、以前
+    使っていたelasticity=0.1では最大値引き時の需要倍率が非常に強くなり（1+0.1×7.5²=6.625倍）、
+    このテストが前提とする「最大値引きまで下げても売り切れない」ケースを再現できなくなった
+    （完売してしまう）ため。"""
     product = ProductInput(
         product_id=1,
         name="test",
         initial_stock=100,
-        elasticity=0.1,
+        elasticity=0.02,
         prior_alpha=1.0,  # 需要が非常に低い
         prior_beta=2.0,
     )
 
-    outcome = run_simulation([product], target_waste_rate=0.0, seed=7)
+    # seed=0（elasticity変更前は7を使っていた）：0でも過剰在庫になることを確認済み。
+    # 値引き感度の値を変えたついでに、既存の慣例（0番から使う）に揃えただけで他意は無い
+    outcome = run_simulation([product], target_waste_rate=0.0, seed=0)
 
     rates = [s.recommended_rate for s in outcome.steps if s.is_new_recommendation]
     quantities = [s.quantity for s in outcome.steps]

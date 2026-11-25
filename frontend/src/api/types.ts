@@ -96,3 +96,38 @@ export interface StockAdjustmentLogEntry {
   new_initial_stock: number
   created_at: string
 }
+
+// 固定スケジュール値引きとの比較（docs/spec.md §5.9）。POST /api/compareの応答はDBに
+// 保存されないその場限りの結果（stock_adjustmentsと違い、永続化バージョンも存在しない）
+export interface ScheduleStepOut {
+  step: number
+  quantity: number
+  remaining_stock: number
+  recommended_rate: number
+}
+
+export interface ComparisonProduct {
+  product_id: number
+  product_name: string
+  unit_price: number | null
+  dynamic_steps: ScheduleStepOut[]
+  dynamic_final_waste_rate: number
+  fixed_steps: ScheduleStepOut[]
+  fixed_final_waste_rate: number
+}
+
+export interface ComparisonResult {
+  products: ComparisonProduct[]
+  fixed_schedule_30_step: number
+  fixed_schedule_50_step: number
+}
+
+// 値引きタイミングの傾向分析（docs/spec.md §5.10）。天気・曜日・イベント有無の条件ごとの集計
+export interface ConditionTiming {
+  weather: Weather
+  day_type: DayType
+  has_event: boolean
+  sample_count: number
+  discounted_count: number
+  avg_first_discount_step: number | null
+}

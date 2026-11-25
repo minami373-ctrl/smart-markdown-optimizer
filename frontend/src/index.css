@@ -303,3 +303,37 @@ th {
   color: var(--sub);
   font-size: 12px;
 }
+
+/* 値引きタイミングの傾向分析（docs/spec.md §4⑦）のヒートマップ。table自体のborder-collapse・
+   セルのpaddingは上のtable/th,tdルールをそのまま使う。背景色だけJS側（rgba）で個別に付ける */
+.timing-grid {
+  table-layout: fixed;
+}
+
+.timing-cell {
+  vertical-align: top;
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+}
+
+.timing-cell-empty {
+  background: var(--panel);
+  color: var(--sub);
+}
+
+.timing-cell-label {
+  font-size: 11px;
+  color: var(--sub);
+  margin-bottom: 4px;
+}
+
+.timing-cell-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.timing-cell-sub {
+  font-size: 11px;
+  color: var(--sub);
+  margin-top: 4px;
+}
