@@ -360,3 +360,32 @@ def test_create_simulation_rejects_approval_delay_out_of_range(
     _add_products(session)
     body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
     assert client.post("/api/simulations", json={**body, "approval_delay_steps": 4}).status_code == 422
+
+
+def test_long_vacation_learning_does_not_change_normal_day_prior(
+    session: Session, client: TestClient
+) -> None:
+    """長期休みの日の学習は「_長期休み」のキーにだけ書き戻され、ふだんの日の事前分布は変わらない
+    （docs/spec.md §5.13。帰省で客が減った日の学習が、ふだんの日の予測に混ざらない）。"""
+    from services.prior import generate_prior_demand
+
+    p = Product(
+        name="唐揚げ弁当",
+        initial_stock=20,
+        elasticity=0.18,
+        prior_demand=json.dumps(generate_prior_demand(0.4), ensure_ascii=False),
+    )
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    before = json.loads(p.prior_demand)
+
+    body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
+    res = client.post("/api/simulations", json={**body, "is_long_vacation": True})
+    assert res.status_code == 200
+    assert res.json()["is_long_vacation"] is True
+
+    session.refresh(p)
+    after = json.loads(p.prior_demand)
+    assert after["晴れ_平日_なし"] == before["晴れ_平日_なし"]
+    assert after["晴れ_平日_なし_長期休み"] != before["晴れ_平日_なし_長期休み"]

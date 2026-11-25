@@ -164,6 +164,7 @@ describe('SimulationPage', () => {
       weather: '雨',
       day_type: '休日',
       has_event: true,
+      is_long_vacation: false,
       target_waste_rate: 0.03,
       approval_delay_steps: 0,
     })
@@ -532,5 +533,21 @@ describe('SimulationPage', () => {
     expect((await screen.findAllByText('半額')).length).toBe(2)
     expect(screen.getByLabelText('売り場モニター')).not.toHaveTextContent('ズバリ')
     expect(screen.getByText(/承認待ち：ズバリ ¥190/)).toBeInTheDocument()
+  })
+
+  it('長期休みにチェックすると、is_long_vacation: trueでシミュレーションを作成する（docs/spec.md §5.13）', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([PRODUCT])
+    const createSpy = vi
+      .spyOn(simulationsApi, 'createSimulation')
+      .mockResolvedValue(makeDetail(1, 0))
+
+    const user = userEvent.setup()
+    render(<SimulationPage />)
+    await screen.findByText('条件を設定して「営業開始」を押してください。')
+
+    await user.click(screen.getByLabelText('長期休み'))
+    await user.click(screen.getByRole('button', { name: '営業開始' }))
+
+    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ is_long_vacation: true }))
   })
 })

@@ -149,6 +149,7 @@ export default function HistoryPage() {
                     <td>{new Date(r.started_at).toLocaleString('ja-JP')}</td>
                     <td>
                       {r.weather} / {r.day_type} / {r.has_event ? 'イベントあり' : 'イベントなし'}
+                      {r.is_long_vacation && ' / 長期休み'}
                     </td>
                     <td>{Math.round(r.target_waste_rate * 100)}%</td>
                     <td>

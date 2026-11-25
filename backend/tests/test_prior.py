@@ -4,7 +4,7 @@ from services.prior import generate_prior_demand
 def test_generates_all_12_condition_keys() -> None:
     result = generate_prior_demand(1.0)
 
-    assert len(result) == 12
+    assert len(result) == 24
     assert "晴れ_平日_なし" in result
     assert "雨_休日_あり" in result
 
@@ -39,3 +39,10 @@ def test_alpha_scales_linearly_with_base_demand() -> None:
 
     for key in small:
         assert large[key]["alpha"] == small[key]["alpha"] * 2
+
+
+def test_long_vacation_has_its_own_lower_demand_keys() -> None:
+    """長期休み（docs/spec.md §5.13）は別のキーで持ち、ふだんの日より需要が低い。"""
+    result = generate_prior_demand(1.0)
+    assert result["晴れ_平日_なし_長期休み"]["alpha"] < result["晴れ_平日_なし"]["alpha"]
+    assert abs(result["晴れ_平日_なし_長期休み"]["alpha"] / result["晴れ_平日_なし"]["alpha"] - 0.7) < 1e-9

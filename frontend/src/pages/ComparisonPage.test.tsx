@@ -53,6 +53,7 @@ describe('ComparisonPage', () => {
       weather: '晴れ',
       day_type: '平日',
       has_event: false,
+      is_long_vacation: false,
       target_waste_rate: 0.03,
       customer_anticipation: false,
     })

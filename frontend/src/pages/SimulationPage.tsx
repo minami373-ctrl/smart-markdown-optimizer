@@ -42,6 +42,8 @@ export default function SimulationPage() {
   const [weather, setWeather] = useState<Weather>('晴れ')
   const [dayType, setDayType] = useState<DayType>('平日')
   const [hasEvent, setHasEvent] = useState(false)
+  //: 長期休み（大学の休み・帰省の期間）の日か（docs/spec.md §5.13）
+  const [isLongVacation, setIsLongVacation] = useState(false)
   const [targetWasteRate, setTargetWasteRate] = useState(0.03)
   //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）
   const [approvalDelaySteps, setApprovalDelaySteps] = useState(0)
@@ -88,6 +90,7 @@ export default function SimulationPage() {
         weather,
         day_type: dayType,
         has_event: hasEvent,
+        is_long_vacation: isLongVacation,
         target_waste_rate: targetWasteRate,
         approval_delay_steps: approvalDelaySteps,
       })
@@ -118,6 +121,7 @@ export default function SimulationPage() {
           weather,
           day_type: dayType,
           has_event: hasEvent,
+          is_long_vacation: isLongVacation,
           target_waste_rate: targetWasteRate,
           approval_delay_steps: approvalDelaySteps,
         })
@@ -175,7 +179,12 @@ export default function SimulationPage() {
    * docs/spec.md §4①「開店直後は山が低く横に広い…」を、最初のティックを待たずに見せるため */
   function priorDistributionFor(product: Product): { alpha: number; beta: number } | null {
     if (!detail) return null
-    const key = conditionKey(detail.weather, detail.day_type, detail.has_event)
+    const key = conditionKey(
+      detail.weather,
+      detail.day_type,
+      detail.has_event,
+      detail.is_long_vacation ?? false,
+    )
     const prior = product.prior_demand[key]
     return prior ? { alpha: prior.alpha, beta: prior.beta } : null
   }
@@ -217,6 +226,15 @@ export default function SimulationPage() {
               type="checkbox"
               checked={hasEvent}
               onChange={(e) => setHasEvent(e.target.checked)}
+              disabled={running || batchRunning}
+            />
+          </label>
+          <label title="大学の休み・帰省の期間はふだんと客数が違う。カレンダーを見て人が入れる">
+            長期休み
+            <input
+              type="checkbox"
+              checked={isLongVacation}
+              onChange={(e) => setIsLongVacation(e.target.checked)}
               disabled={running || batchRunning}
             />
           </label>

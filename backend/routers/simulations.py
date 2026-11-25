@@ -32,6 +32,8 @@ class SimulationCreate(BaseModel):
     weather: Literal["晴れ", "曇り", "雨"]
     day_type: Literal["平日", "休日"]
     has_event: bool
+    #: 長期休み（大学の休み・帰省の期間）の日か（docs/spec.md §5.13）。人がカレンダーを見て入れる
+    is_long_vacation: bool = False
     target_waste_rate: float = Field(ge=0.0, le=0.10)
     #: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）。
     #: 1ステップ18分。0=すぐ、1=18分後、2=36分後、3=54分後
@@ -78,6 +80,7 @@ class SimulationSummary(BaseModel):
     weather: str
     day_type: str
     has_event: bool
+    is_long_vacation: bool = False
     target_waste_rate: float
     approval_delay_steps: int = 0
     status: str
@@ -149,13 +152,14 @@ def create_simulation(
 
     # 先に事前分布を検証する。ここで失敗しても SimulationRun はまだDBに存在しないので、
     # 「running のまま完了しない孤立レコード」が履歴に残らない
-    key = condition_key(body.weather, body.day_type, body.has_event)
+    key = condition_key(body.weather, body.day_type, body.has_event, body.is_long_vacation)
     inputs = _build_inputs(products, key)
 
     run = SimulationRun(
         weather=body.weather,
         day_type=body.day_type,
         has_event=body.has_event,
+        is_long_vacation=body.is_long_vacation,
         target_waste_rate=body.target_waste_rate,
         approval_delay_steps=body.approval_delay_steps,
         status="running",
@@ -265,6 +269,7 @@ def create_simulation(
         weather=run.weather,
         day_type=run.day_type,
         has_event=run.has_event,
+        is_long_vacation=run.is_long_vacation,
         target_waste_rate=run.target_waste_rate,
         approval_delay_steps=run.approval_delay_steps,
         status=run.status,
@@ -306,6 +311,7 @@ def list_simulations(session: Session = Depends(get_session)) -> list[Simulation
             weather=r.weather,
             day_type=r.day_type,
             has_event=r.has_event,
+            is_long_vacation=r.is_long_vacation,
             target_waste_rate=r.target_waste_rate,
             approval_delay_steps=r.approval_delay_steps,
             status=r.status,
@@ -396,6 +402,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
         weather=run.weather,
         day_type=run.day_type,
         has_event=run.has_event,
+        is_long_vacation=run.is_long_vacation,
         target_waste_rate=run.target_waste_rate,
         approval_delay_steps=run.approval_delay_steps,
         status=run.status,

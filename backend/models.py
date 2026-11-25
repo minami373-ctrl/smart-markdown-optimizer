@@ -41,6 +41,8 @@ class SimulationRun(SQLModel, table=True):
     weather: str
     day_type: str
     has_event: bool
+    # 長期休み（大学の休み・帰省の期間）の日か（docs/spec.md §5.13。2026-11-26追加）
+    is_long_vacation: bool = False
     target_waste_rate: float
     # ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11。0〜3）
     approval_delay_steps: int = 0

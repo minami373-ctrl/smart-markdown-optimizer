@@ -51,7 +51,7 @@ def test_list_products_returns_seeded_products(session: Session, client: TestCli
     assert res.json()[0]["prior_demand"]["晴れ_平日_なし"]["alpha"] == 3.0
 
 
-def test_create_product_generates_12_prior_conditions(
+def test_create_product_generates_24_prior_conditions(
     session: Session, client: TestClient
 ) -> None:
     res = client.post(
@@ -62,7 +62,7 @@ def test_create_product_generates_12_prior_conditions(
     assert res.status_code == 201
     body = res.json()
     assert body["name"] == "たこ焼き"
-    assert len(body["prior_demand"]) == 12
+    assert len(body["prior_demand"]) == 24  # 天気3×曜日2×イベント2×長期休み2（§5.13）
     assert body["prior_demand"]["晴れ_平日_なし"]["alpha"] > body["prior_demand"]["雨_平日_なし"]["alpha"]
 
     # 一覧にも反映される

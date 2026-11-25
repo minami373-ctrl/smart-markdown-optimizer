@@ -127,6 +127,7 @@ export default function ComparisonPage() {
   const [weather, setWeather] = useState<Weather>('晴れ')
   const [dayType, setDayType] = useState<DayType>('平日')
   const [hasEvent, setHasEvent] = useState(false)
+  const [isLongVacation, setIsLongVacation] = useState(false)
   const [targetWasteRate, setTargetWasteRate] = useState(0.03)
   //: 「お客さんが待つ」効果（docs/spec.md §5.12。売り場での観察にもとづく仮定なので切り替えられる）
   const [customerAnticipation, setCustomerAnticipation] = useState(false)
@@ -144,6 +145,7 @@ export default function ComparisonPage() {
         weather,
         day_type: dayType,
         has_event: hasEvent,
+        is_long_vacation: isLongVacation,
         target_waste_rate: targetWasteRate,
         customer_anticipation: customerAnticipation,
       })
@@ -196,6 +198,15 @@ export default function ComparisonPage() {
               type="checkbox"
               checked={hasEvent}
               onChange={(e) => setHasEvent(e.target.checked)}
+              disabled={running}
+            />
+          </label>
+          <label>
+            長期休み
+            <input
+              type="checkbox"
+              checked={isLongVacation}
+              onChange={(e) => setIsLongVacation(e.target.checked)}
               disabled={running}
             />
           </label>

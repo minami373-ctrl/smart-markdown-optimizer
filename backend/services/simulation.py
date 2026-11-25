@@ -111,8 +111,13 @@ def split_stock(initial_stock: int) -> tuple[int, int]:
     return morning, initial_stock - morning
 
 
-def condition_key(weather: str, day_type: str, has_event: bool) -> str:
-    return f"{weather}_{day_type}_{'あり' if has_event else 'なし'}"
+def condition_key(
+    weather: str, day_type: str, has_event: bool, is_long_vacation: bool = False
+) -> str:
+    """事前分布の条件キー。長期休み（docs/spec.md §5.13。2026-11-26追加）の日は末尾に
+    `_長期休み`を付けた別のキーにする。ふだんの日のキーは以前と同じ形式のまま。"""
+    key = f"{weather}_{day_type}_{'あり' if has_event else 'なし'}"
+    return f"{key}_長期休み" if is_long_vacation else key
 
 
 def discount_multiplier(discount_rate: float, elasticity: float) -> float:

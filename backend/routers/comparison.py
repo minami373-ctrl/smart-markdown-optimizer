@@ -28,6 +28,8 @@ class ComparisonCreate(BaseModel):
     weather: Literal["晴れ", "曇り", "雨"]
     day_type: Literal["平日", "休日"]
     has_event: bool
+    #: 長期休みの日か（docs/spec.md §5.13）
+    is_long_vacation: bool = False
     #: 動的値引き側にのみ使う。固定スケジュール側は目標廃棄率という概念を持たない（docs/spec.md §5.9）
     target_waste_rate: float = Field(ge=0.0, le=0.10)
     #: 動的値引き側のズバリ引きの承認の遅れ（docs/spec.md §5.11。POST /api/simulationsと同じ）
@@ -118,7 +120,7 @@ def compare_schedules(
     body: ComparisonCreate, session: Session = Depends(get_session)
 ) -> ComparisonOut:
     products = _load_all_products(session)
-    key = condition_key(body.weather, body.day_type, body.has_event)
+    key = condition_key(body.weather, body.day_type, body.has_event, body.is_long_vacation)
     inputs = _build_inputs(products, key)
 
     # DBに保存しない一過性の比較のため、SimulationRun.idではなくその場で乱数シードを選ぶ
