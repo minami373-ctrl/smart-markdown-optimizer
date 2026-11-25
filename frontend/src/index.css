@@ -1,34 +1,37 @@
 :root {
-  --brand: #d9480f;
-  --brand-weak: #fff0e6;
-  --bg: #faf9f7;
+  --brand: #222222;
+  --brand-weak: #f0efeb;
+  --accent: #c8102e;
+  --bg: #f6f5f2;
   --panel: #ffffff;
-  --ink: #2b2620;
-  --sub: #7a7268;
-  --line: #e8e2d9;
-  --ok: #1a7f4e;
-  --warn: #b23a2f;
-  --ok-weak: #e3f5ec;
-  --warn-weak: #fbe7e4;
-  --disabled: #c9beb1;
-  font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', sans-serif;
+  --ink: #222222;
+  --sub: #6b6b6b;
+  --line: #dcdad5;
+  --ok: #2b7a3d;
+  --warn: #c8102e;
+  --ok-weak: #e6f2e8;
+  --warn-weak: #fbeaec;
+  --disabled: #c8c5bf;
+  font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo', sans-serif;
+  font-size: 14px;
 }
 
 /* ダークモード（docs/spec.md §4「全画面共通：ダークモード切り替え」）。
    ThemeToggleがdocument.documentElementに立てるdata-theme属性で切り替わる */
 :root[data-theme='dark'] {
-  --brand: #ff7a3d;
-  --brand-weak: #402313;
-  --bg: #1c1a17;
-  --panel: #26231f;
-  --ink: #f0ece6;
-  --sub: #a89e8f;
-  --line: #3a352f;
-  --ok: #4ade80;
-  --warn: #ff8a75;
-  --ok-weak: #1c3a2a;
-  --warn-weak: #4a2622;
-  --disabled: #4a443c;
+  --brand: #e8e6e1;
+  --brand-weak: #2c2b28;
+  --accent: #ff5a6e;
+  --bg: #181817;
+  --panel: #222220;
+  --ink: #e8e6e1;
+  --sub: #a3a09a;
+  --line: #3a3936;
+  --ok: #6cc788;
+  --warn: #ff5a6e;
+  --ok-weak: #1d3324;
+  --warn-weak: #3d1f24;
+  --disabled: #4a4945;
 }
 
 * {
@@ -338,47 +341,295 @@ th {
   margin-top: 4px;
 }
 
+/* ---- 2026-11-26 UIの作り直し：使う人ごとに画面を分け、実際の店の道具に見せる ---- */
+
+.nav {
+  flex-wrap: wrap;
+  gap: 8px 28px;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  font-size: 16px;
+}
+
+.brand-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sub);
+}
+
+.nav-main a {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.nav-main a.active,
+.nav-analysis a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.nav-analysis {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.nav-label {
+  color: var(--sub);
+  border-left: 1px solid var(--line);
+  padding-left: 16px;
+}
+
+main {
+  max-width: 1080px;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+
+.page-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.clock-display {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  margin: 0;
+}
+
+.card,
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.conditions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  align-items: flex-end;
+}
+
+.field-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-end;
+}
+
+.field-group label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.field-group label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+  padding-bottom: 4px;
+}
+
+.group-label {
+  flex-basis: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sub);
+  letter-spacing: 0.05em;
+}
+
+.field-group.actions {
+  margin-left: auto;
+}
+
+.field-group input[type='number'] {
+  width: 64px;
+}
+
+button {
+  font: inherit;
+}
+
+button.primary {
+  background: var(--brand);
+  color: var(--panel);
+  border-radius: 4px;
+  padding: 8px 22px;
+  font-weight: 700;
+}
+
+.preset-btn {
+  border-radius: 4px;
+}
+
+.empty {
+  color: var(--sub);
+  padding: 24px 0;
+  text-align: center;
+}
+
+.floor {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .floor {
+    grid-template-columns: 1fr;
+  }
+}
+
+table.list td.num,
+table.list th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+table.list td.ok {
+  color: var(--ok);
+}
+
+table.list td.warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.sub {
+  color: var(--sub);
+  font-size: 12px;
+}
+
+tr.row-pending {
+  background: var(--warn-weak);
+}
+
 /* ズバリ引きの承認待ち（docs/spec.md §5.11） */
 .pending-approval {
   color: var(--warn);
-  font-size: 0.85rem;
-  margin: 0.25rem 0;
+  font-weight: 600;
+  font-size: 12px;
 }
 
-/* 売り場モニター（docs/spec.md §4①・§5.11）。シールの代わりにお客さんに見せる表示 */
+/* 売り場モニター（docs/spec.md §4①・§5.11）：お惣菜コーナーの値札・POP風 */
 .monitor-board {
-  background: #1d2430;
-  color: #f5f5f5;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
+  background: #fffdf7;
+  color: #222;
+  border: 2px solid #222;
+  border-radius: 4px;
+  padding: 10px 12px 12px;
 }
+
 .monitor-header {
   display: flex;
   justify-content: space-between;
-  font-weight: bold;
-  border-bottom: 1px solid #3a4456;
-  padding-bottom: 0.4rem;
-  margin-bottom: 0.4rem;
+  font-weight: 700;
+  font-size: 13px;
+  border-bottom: 2px solid #222;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
 }
+
 .monitor-board ul {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.25rem 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
 }
+
 .monitor-board li {
+  position: relative;
   display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.2rem 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #d6d2c4;
+  background: #fff;
+  min-height: 62px;
 }
-.monitor-board li.discounted .monitor-price {
-  color: #ffcf5a;
-  font-weight: bold;
+
+.monitor-name {
+  font-weight: 700;
+  font-size: 13px;
 }
-.monitor-label {
-  margin-right: 0.4rem;
+
+.monitor-price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-price strong {
+  font-size: 18px;
+}
+
+.monitor-price s {
+  color: #8a8578;
+  font-size: 12px;
+}
+
+.monitor-board li.discounted .monitor-price strong {
+  color: #c8102e;
+}
+
+.monitor-board li.sold-out {
+  background: #eeece6;
+  color: #8a8578;
+}
+
+.sticker {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  background: #c8102e;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 10px 7px;
+  border-radius: 50%;
+  min-width: 40px;
+  text-align: center;
+  transform: rotate(8deg);
+}
+
+details.model summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px 14px;
+  margin-top: 8px;
+}
+
+.model-item span {
+  font-size: 12px;
 }

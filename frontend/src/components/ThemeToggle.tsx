@@ -24,7 +24,7 @@ export default function ThemeToggle() {
       className="theme-toggle"
       onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
     >
-      {theme === 'dark' ? '☀️ ライト' : '🌙 ダーク'}
+      {theme === 'dark' ? '明るい表示' : '暗い表示'}
     </button>
   )
 }

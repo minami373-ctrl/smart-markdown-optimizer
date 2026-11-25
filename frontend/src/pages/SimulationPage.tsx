@@ -193,10 +193,16 @@ export default function SimulationPage() {
 
   return (
     <div>
-      <h1>営業シミュレーション</h1>
+      <div className="page-head">
+        <h1>今日の売り場</h1>
+        {detail && totalSteps > 0 && (
+          <p className="clock-display">現在 {stepToClockTime(visibleStep, totalSteps)}</p>
+        )}
+      </div>
 
-      <div className="card">
-        <div className="form-row">
+      <section className="panel conditions">
+        <div className="field-group">
+          <span className="group-label">その日の条件</span>
           <label>
             天気
             <select
@@ -220,24 +226,30 @@ export default function SimulationPage() {
               <option value="休日">休日</option>
             </select>
           </label>
-          <label>
-            イベント
+          <label className="check">
             <input
               type="checkbox"
               checked={hasEvent}
               onChange={(e) => setHasEvent(e.target.checked)}
               disabled={running || batchRunning}
             />
+            イベント
           </label>
-          <label title="大学の休み・帰省の期間はふだんと客数が違う。カレンダーを見て人が入れる">
-            長期休み
+          <label
+            className="check"
+            title="大学の休み・帰省の期間はふだんと客数が違う。カレンダーを見て人が入れる"
+          >
             <input
               type="checkbox"
               checked={isLongVacation}
               onChange={(e) => setIsLongVacation(e.target.checked)}
               disabled={running || batchRunning}
             />
+            長期休み
           </label>
+        </div>
+        <div className="field-group">
+          <span className="group-label">お店の決めごと</span>
           <label>
             目標廃棄率（{Math.round(targetWasteRate * 100)}%）
             <input
@@ -249,20 +261,6 @@ export default function SimulationPage() {
               onChange={(e) => setTargetWasteRate(Number(e.target.value))}
               disabled={running || batchRunning}
             />
-          </label>
-          <label>
-            ズバリ引きの承認（ナイトマネージャー）
-            <select
-              value={approvalDelaySteps}
-              onChange={(e) => setApprovalDelaySteps(Number(e.target.value))}
-              disabled={running || batchRunning}
-            >
-              {APPROVAL_DELAY_OPTIONS.map((o) => (
-                <option key={o.steps} value={o.steps}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
           </label>
           <span className="preset-buttons">
             {TARGET_WASTE_RATE_PRESETS.map((rate) => (
@@ -277,11 +275,25 @@ export default function SimulationPage() {
               </button>
             ))}
           </span>
+          <label>
+            ズバリ引きの承認（ナイトマネージャー）
+            <select
+              value={approvalDelaySteps}
+              onChange={(e) => setApprovalDelaySteps(Number(e.target.value))}
+              disabled={running || batchRunning}
+            >
+              {APPROVAL_DELAY_OPTIONS.map((o) => (
+                <option key={o.steps} value={o.steps}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="field-group actions">
           <button className="primary" onClick={handleStart} disabled={running || batchRunning}>
             {running ? '営業中…' : '営業開始'}
           </button>
-        </div>
-        <div className="form-row">
           <label>
             連続実行（同条件で学習を進める）
             <input
@@ -307,100 +319,146 @@ export default function SimulationPage() {
           </button>
         </div>
         {error && <p className="error">{error}</p>}
-      </div>
+      </section>
 
-      {detail && totalSteps > 0 && (
-        <p className="clock-display">現在 {stepToClockTime(visibleStep, totalSteps)}</p>
+      {!detail && <p className="empty">条件を設定して「営業開始」を押してください。</p>}
+
+      {detail && totalSteps > 0 && !finished && (
+        <div className="floor">
+          <MonitorBoard
+            clock={stepToClockTime(visibleStep, totalSteps)}
+            items={products.map((p) => {
+              const step = latestStepFor(p.id)
+              return {
+                productId: p.id,
+                name: p.name,
+                unitPrice: p.unit_price,
+                appliedRate: step?.applied_rate ?? step?.recommended_rate ?? 0,
+                remainingStock: step?.remaining_stock ?? p.initial_stock,
+              }
+            })}
+          />
+
+          <section className="panel manager">
+            <h2>ナイトマネージャーの画面</h2>
+            <table className="list">
+              <thead>
+                <tr>
+                  <th>商品</th>
+                  <th className="num">残り</th>
+                  <th>売り場の表示</th>
+                  <th>確認すること</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((p) => {
+                  const step = latestStepFor(p.id)
+                  const applied = step?.applied_rate ?? step?.recommended_rate ?? 0
+                  const pending = step != null && applied < step.recommended_rate
+                  return (
+                    <tr key={p.id} className={pending ? 'row-pending' : undefined}>
+                      <td>{p.name}</td>
+                      <td className="num">
+                        {step?.remaining_stock ?? p.initial_stock}
+                        <span className="sub"> / {p.initial_stock}</span>
+                      </td>
+                      <td>{applied > 0 ? discountLabel(applied, p.unit_price) : '定価'}</td>
+                      <td>
+                        {pending && step && (
+                          <span className="pending-approval">
+                            承認待ち：{discountLabel(step.recommended_rate, p.unit_price)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </section>
+        </div>
       )}
 
-      {detail && totalSteps > 0 && (
-        <MonitorBoard
-          clock={stepToClockTime(visibleStep, totalSteps)}
-          items={products.map((p) => {
-            const step = latestStepFor(p.id)
-            return {
-              productId: p.id,
-              name: p.name,
-              unitPrice: p.unit_price,
-              appliedRate: step?.applied_rate ?? step?.recommended_rate ?? 0,
-              remainingStock: step?.remaining_stock ?? p.initial_stock,
-            }
-          })}
-        />
+      {finished && detail && (
+        <section className="panel">
+          <h2>閉店後の結果</h2>
+          <table className="list">
+            <thead>
+              <tr>
+                <th>商品</th>
+                <th className="num">廃棄率</th>
+                <th>目標</th>
+                <th className="num">推定売上</th>
+                <th>明日の在庫</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((p) => {
+                const finalResult = detail.finals.find((f) => f.product_id === p.id)
+                if (!finalResult) return null
+                const stockAdjustment = detail.stock_adjustments.find(
+                  (a) => a.product_id === p.id,
+                )
+                return (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td className="num">{Math.round(finalResult.final_waste_rate * 100)}%</td>
+                    <td className={finalResult.achieved ? 'ok' : 'warn'}>
+                      {finalResult.achieved ? '目標達成' : '目標未達'}
+                    </td>
+                    <td className="num">
+                      {p.unit_price != null &&
+                        `¥${Math.round(
+                          computeRevenue(
+                            detail.steps.filter((s) => s.product_id === p.id),
+                            p.unit_price,
+                          ),
+                        ).toLocaleString()}`}
+                    </td>
+                    <td className="sub">
+                      {stockAdjustment &&
+                        `在庫を自動調整：${stockAdjustment.delta > 0 ? '+' : ''}${stockAdjustment.delta}個（次回の初期在庫 ${stockAdjustment.new_initial_stock}個）`}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </section>
       )}
-
-      <div className="product-grid">
-        {products.map((p, i) => {
-          const step = latestStepFor(p.id)
-          const finalResult = detail?.finals.find((f) => f.product_id === p.id)
-          const stockAdjustment = detail?.stock_adjustments.find((a) => a.product_id === p.id)
-          const distribution =
-            step?.posterior_alpha != null && step?.posterior_beta != null
-              ? { alpha: step.posterior_alpha, beta: step.posterior_beta }
-              : priorDistributionFor(p) // 最初のティック前は事前分布（開店直後の山）を見せる
-          return (
-            <div className="product-card" key={p.id}>
-              <h3>{p.name}</h3>
-              {!detail && <p>条件を設定して「営業開始」を押してください。</p>}
-              {detail && !finished && (
-                <>
-                  <div className="rate">
-                    {discountLabel(step?.applied_rate ?? step?.recommended_rate ?? 0, p.unit_price)}
-                  </div>
-                  {step && (step.applied_rate ?? step.recommended_rate) < step.recommended_rate && (
-                    <p className="pending-approval">
-                      承認待ち：{discountLabel(step.recommended_rate, p.unit_price)}
-                      （ナイトマネージャーが承認するとモニターに出ます）
-                    </p>
-                  )}
-                  <p>
-                    残り {step?.remaining_stock ?? p.initial_stock} / {p.initial_stock}
-                  </p>
-                  <p>期待残数: {step ? Math.round((step.posterior_mean ?? 0) * 10) / 10 : '-'}</p>
-                  {distribution && (
-                    <>
-                      <DistributionChart
-                        alpha={distribution.alpha}
-                        beta={distribution.beta}
-                        color={COLORS[i % COLORS.length]}
-                      />
-                      <p className="chart-caption">需要率の確信度（データが増えるほど山が尖る）</p>
-                    </>
-                  )}
-                </>
-              )}
-              {finished && finalResult && (
-                <>
-                  <p>実績廃棄率: {Math.round(finalResult.final_waste_rate * 100)}%</p>
-                  <span className={`tag ${finalResult.achieved ? 'ok' : 'warn'}`}>
-                    {finalResult.achieved ? '目標達成' : '目標未達'}
-                  </span>
-                  {p.unit_price != null && detail && (
-                    <p>
-                      推定売上: ¥
-                      {Math.round(
-                        computeRevenue(
-                          detail.steps.filter((s) => s.product_id === p.id),
-                          p.unit_price,
-                        ),
-                      ).toLocaleString()}
-                    </p>
-                  )}
-                  {stockAdjustment && (
-                    <p className="chart-caption">
-                      在庫を自動調整：{stockAdjustment.delta > 0 ? '+' : ''}
-                      {stockAdjustment.delta}個（次回の初期在庫 {stockAdjustment.new_initial_stock}個）
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          )
-        })}
-      </div>
 
       {detail && <StockChart detail={detail} visibleStep={visibleStep} />}
       {learningCurve.length > 0 && <LearningCurveChart runs={learningCurve} />}
+
+      {detail && (
+        <details className="panel model">
+          <summary>予測のしくみを見る（ベイズ更新）</summary>
+          <p className="sub">
+            商品ごとの「1回あたりに売れる数」の予測です。売れるたびに更新され、データが増えるほど山が高く鋭くなります（確信度が上がる）。
+          </p>
+          <div className="model-grid">
+            {products.map((p, i) => {
+              const step = latestStepFor(p.id)
+              const distribution =
+                step?.posterior_alpha != null && step?.posterior_beta != null
+                  ? { alpha: step.posterior_alpha, beta: step.posterior_beta }
+                  : priorDistributionFor(p)
+              return (
+                <div key={p.id} className="model-item">
+                  <span>{p.name}</span>
+                  {distribution && (
+                    <DistributionChart
+                      alpha={distribution.alpha}
+                      beta={distribution.beta}
+                      color={COLORS[i % COLORS.length]}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </details>
+      )}
     </div>
   )
 }
@@ -424,7 +482,7 @@ function StockChart({ detail, visibleStep }: { detail: SimulationDetail; visible
   }))
 
   return (
-    <div className="card">
+    <section className="panel">
       <h2>在庫推移</h2>
       <p className="chart-caption">
         {/* responsive:trueのLegendプラグインはjsdomのcanvas未実装環境でリサイズ監視まわりの
@@ -456,7 +514,7 @@ function StockChart({ detail, visibleStep }: { detail: SimulationDetail; visible
           }}
         />
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -477,7 +535,7 @@ function LearningCurveChart({ runs }: { runs: SimulationDetail[] }) {
   }))
 
   return (
-    <div className="card">
+    <section className="panel">
       <h2>学習曲線（連続実行 {runs.length}回）</h2>
       <p className="chart-caption">
         {series.map((s, i) => (
@@ -506,6 +564,6 @@ function LearningCurveChart({ runs }: { runs: SimulationDetail[] }) {
           }}
         />
       </div>
-    </div>
+    </section>
   )
 }

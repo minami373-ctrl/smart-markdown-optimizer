@@ -30,7 +30,7 @@ describe('ThemeToggle', () => {
     render(<ThemeToggle />)
 
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
-    expect(screen.getByRole('button', { name: /ライト/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /明るい表示/ })).toBeInTheDocument()
   })
 
   it('保存済みの選択が無く、OSがライトならライトモードで開始する', () => {
@@ -39,7 +39,7 @@ describe('ThemeToggle', () => {
     render(<ThemeToggle />)
 
     expect(document.documentElement.getAttribute('data-theme')).toBe('light')
-    expect(screen.getByRole('button', { name: /ダーク/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /暗い表示/ })).toBeInTheDocument()
   })
 
   it('localStorageに保存済みの選択があれば、OSの設定より優先する', () => {
@@ -61,7 +61,7 @@ describe('ThemeToggle', () => {
 
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
-    expect(screen.getByRole('button', { name: /ライト/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /明るい表示/ })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button'))
 

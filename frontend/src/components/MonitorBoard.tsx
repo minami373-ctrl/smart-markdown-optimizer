@@ -25,39 +25,44 @@ export function monitorPrice(unitPrice: number, rate: number): number {
  */
 export default function MonitorBoard({ items, clock }: { items: MonitorItem[]; clock: string }) {
   return (
-    <div className="monitor-board" aria-label="売り場モニター">
+    <section className="monitor-board" aria-label="売り場モニター">
       <div className="monitor-header">
-        <span>本日のお惣菜</span>
+        <span>お惣菜コーナー　売り場モニター</span>
         <span>{clock}</span>
       </div>
       <ul>
         {items.map((item) => {
           const soldOut = item.remainingStock === 0
-          const discounted = item.appliedRate > 0
+          const discounted = item.appliedRate > 0 && !soldOut
+          const label = discountLabel(item.appliedRate, item.unitPrice)
           return (
-            <li key={item.productId} className={discounted && !soldOut ? 'discounted' : undefined}>
+            <li
+              key={item.productId}
+              className={soldOut ? 'sold-out' : discounted ? 'discounted' : undefined}
+            >
               <span className="monitor-name">{item.name}</span>
               {soldOut ? (
                 <span className="monitor-price">売り切れ</span>
               ) : (
                 <span className="monitor-price">
-                  {discounted && (
-                    <span className="monitor-label">{discountLabel(item.appliedRate, item.unitPrice)}</span>
-                  )}
                   {item.unitPrice != null &&
                     (discounted ? (
                       <>
-                        <s>¥{item.unitPrice}</s> ¥{monitorPrice(item.unitPrice, item.appliedRate)}
+                        <s>¥{item.unitPrice}</s>
+                        <strong>¥{monitorPrice(item.unitPrice, item.appliedRate)}</strong>
                       </>
                     ) : (
-                      `¥${item.unitPrice}`
+                      <strong>¥{item.unitPrice}</strong>
                     ))}
                 </span>
+              )}
+              {discounted && (
+                <span className="sticker">{label.startsWith('ズバリ') ? 'ズバリ' : label}</span>
               )}
             </li>
           )
         })}
       </ul>
-    </div>
+    </section>
   )
 }

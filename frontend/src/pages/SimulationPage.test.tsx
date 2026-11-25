@@ -172,7 +172,8 @@ describe('SimulationPage', () => {
     // アニメーション完了（0.5秒間隔で1ステップぶん）を待ってから実績が出る
     await waitFor(
       () => {
-        expect(screen.getByText(/実績廃棄率: 10%/)).toBeInTheDocument()
+        expect(screen.getByText('閉店後の結果')).toBeInTheDocument()
+        expect(screen.getByRole('cell', { name: '10%' })).toBeInTheDocument()
       },
       { timeout: 2000 },
     )
@@ -180,8 +181,8 @@ describe('SimulationPage', () => {
     expect(screen.getByRole('button', { name: '営業開始' })).not.toBeDisabled()
     // 在庫推移グラフはシミュレーション開始後に表示される（docs/spec.md §4①）
     expect(screen.getByText('在庫推移')).toBeInTheDocument()
-    // このテストのPRODUCTはunit_priceが未設定なので推定売上は表示されない
-    expect(screen.queryByText(/推定売上/)).not.toBeInTheDocument()
+    // このテストのPRODUCTはunit_priceが未設定なので推定売上の欄は空（金額が出ない）
+    expect(screen.queryByText(/^¥\d/)).not.toBeInTheDocument()
     // このテストのdetailにはstock_adjustmentsが無いので自動調整の通知も出ない
     expect(screen.queryByText(/在庫を自動調整/)).not.toBeInTheDocument()
   })
@@ -260,7 +261,7 @@ describe('SimulationPage', () => {
     // 200円 + 200円 = 400円
     await waitFor(
       () => {
-        expect(screen.getByText('推定売上: ¥400')).toBeInTheDocument()
+        expect(screen.getByRole('cell', { name: '¥400' })).toBeInTheDocument()
       },
       { timeout: 2000 },
     )
@@ -331,7 +332,7 @@ describe('SimulationPage', () => {
     // 最後（3回目）の結果が、通常の営業開始と同じアニメーションで再生されて画面に出る
     await waitFor(
       () => {
-        expect(screen.getByText(/実績廃棄率: 2%/)).toBeInTheDocument()
+        expect(screen.getByRole('cell', { name: '2%' })).toBeInTheDocument()
       },
       { timeout: 2000 },
     )
