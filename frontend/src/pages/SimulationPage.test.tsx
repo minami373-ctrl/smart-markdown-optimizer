@@ -553,4 +553,18 @@ describe('SimulationPage', () => {
 
     expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ is_long_vacation: true }))
   })
+
+  it('半分以上の商品が「いつもより売れていない」なら、店全体の知らせを出す（docs/spec.md §5.16）', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([PRODUCT])
+    const detail = makeDetail(1, 0)
+    detail.steps = detail.steps.map((s) => ({ ...s, alert: 'low' as const }))
+    vi.spyOn(simulationsApi, 'createSimulation').mockResolvedValue(detail)
+
+    const user = userEvent.setup()
+    render(<SimulationPage />)
+    await screen.findByText('条件を設定して「営業開始」を押してください。')
+    await user.click(screen.getByRole('button', { name: '営業開始' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('今日はいつもより売れていません（1商品中1商品）')
+  })
 })
