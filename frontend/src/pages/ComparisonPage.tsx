@@ -164,7 +164,7 @@ export default function ComparisonPage() {
         値引きのタイミングが「{stepToClockTime(result?.fixed_schedule_30_step ?? 30)}
         ＝3割引・{stepToClockTime(result?.fixed_schedule_50_step ?? 35)}
         ＝半額・21時過ぎ＝ズバリ引き」のように固定化された従来のやり方と、今の動的値引きを、同じ条件・
-        同じ乱数（＝同じ客の来店パターン）で比較します。DBには保存されません。
+        同じ乱数（＝同じお客さんの来店パターン）で比べます。比較の結果は履歴に保存されません。
       </p>
 
       <div className="card">

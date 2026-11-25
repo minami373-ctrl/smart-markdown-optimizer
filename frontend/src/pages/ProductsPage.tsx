@@ -107,7 +107,7 @@ function ProductForm({
         />
       </label>
       <label>
-        基準需要（平日・晴れ・1stepの平均個数）
+        基準需要（晴れの平日・18分あたりに売れる平均の個数）
         <input
           type="number"
           min={0.1}

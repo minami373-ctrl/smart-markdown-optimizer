@@ -321,7 +321,7 @@ describe('ProductsPage', () => {
     expect(editCard).toBeInTheDocument()
     // alpha 3.12 ÷ (1.2×1.0×1.0×2.0) = 1.3
     const baseDemandInput = within(editCard).getByLabelText(
-      '基準需要（平日・晴れ・1stepの平均個数）',
+      '基準需要（晴れの平日・18分あたりに売れる平均の個数）',
     ) as HTMLInputElement
     expect(baseDemandInput.value).toBe('1.3')
   })
