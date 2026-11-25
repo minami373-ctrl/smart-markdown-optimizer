@@ -43,4 +43,15 @@ describe('computeRevenue', () => {
   it('stepsが空なら0を返す', () => {
     expect(computeRevenue([], 100)).toBe(0)
   })
+
+  it('applied_rate（モニターに実際に出ていた値引き）があれば、提案ではなくそちらで計算する', () => {
+    // ステップ0でズバリ引き（75%）が提案されたが承認待ちで、モニターは半額のまま
+    const steps = [
+      { step: 0, quantity: 0, recommended_rate: 0.75, applied_rate: 0.5 },
+      { step: 1, quantity: 2, recommended_rate: 0.75, applied_rate: 0.5 },
+    ]
+
+    // ステップ1の販売2個は半額（50円）で売れた → 100円（提案の75%引きなら50円になる）
+    expect(computeRevenue(steps, 100)).toBe(100)
+  })
 })

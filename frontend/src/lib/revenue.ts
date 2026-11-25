@@ -2,6 +2,8 @@ export interface RevenueStep {
   step: number
   quantity: number
   recommended_rate: number
+  //: モニターに実際に出ていた値引き率（docs/spec.md §5.11）。あればこちらで計算する
+  applied_rate?: number
 }
 
 /**
@@ -20,7 +22,8 @@ export function computeRevenue(steps: RevenueStep[], unitPrice: number): number 
   let revenue = 0
   for (const s of sorted) {
     revenue += s.quantity * unitPrice * (1 - currentRate)
-    currentRate = s.recommended_rate
+    // 売上に効くのは、提案ではなくモニターに実際に出ていた（承認済みの）値引き
+    currentRate = s.applied_rate ?? s.recommended_rate
   }
   return revenue
 }

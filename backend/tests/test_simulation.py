@@ -414,3 +414,60 @@ def test_required_discount_rate_is_inverse_of_discount_multiplier() -> None:
     assert abs(discount_multiplier(rate, elasticity=0.15) - 2.0) < 1e-9
     # 1乗の式なら 1.0 × 0.1 ÷ 0.15 ≈ 0.667 になっていた。2乗の逆算は 0.1 × √(1 ÷ 0.15) ≈ 0.258
     assert abs(rate - 0.1 * (1 / 0.15) ** 0.5) < 1e-9
+
+
+# --- ナイトマネージャーの承認（docs/spec.md §5.11。2026-11-26追加） ---
+
+
+def _low_demand_products() -> list[ProductInput]:
+    return [make_product(product_id=i, stock=100, alpha=0.5, beta=2.0) for i in (1, 2, 3)]
+
+
+def test_approval_delay_zero_applies_every_proposal_immediately() -> None:
+    """承認の遅れ0（すぐ承認）なら、モニターに出る値引きは常に提案と同じ（以前と同じ動き）。"""
+    for seed in range(5):
+        outcome = run_simulation(_low_demand_products(), target_waste_rate=0.0, seed=seed)
+        assert all(s.applied_rate == s.recommended_rate for s in outcome.steps)
+
+
+def test_30_percent_and_half_are_applied_without_waiting_for_approval() -> None:
+    """承認が遅れても、30%引き・半額は提案と同時にモニターに出る（承認が要るのはズバリ引きだけ）。"""
+    for seed in range(5):
+        outcome = run_simulation(
+            _low_demand_products(), target_waste_rate=0.0, seed=seed, approval_delay_steps=3
+        )
+        for s in outcome.steps:
+            if s.recommended_rate <= 0.50:
+                assert s.applied_rate == s.recommended_rate
+
+
+def test_zubari_is_applied_only_after_the_approval_delay() -> None:
+    """ズバリ引きは、提案されたステップから approval_delay_steps 後に初めてモニターに出る。
+    それまでは前の値引き（半額）のまま。"""
+    checked = 0
+    for seed in range(10):
+        outcome = run_simulation(
+            _low_demand_products(), target_waste_rate=0.0, seed=seed, approval_delay_steps=2
+        )
+        for pid in (1, 2, 3):
+            steps = sorted((s for s in outcome.steps if s.product_id == pid), key=lambda s: s.step)
+            first = next((s for s in steps if s.recommended_rate > 0.50), None)
+            if first is None or first.step + 2 >= len(steps):
+                continue
+            by_step = {s.step: s for s in steps}
+            assert by_step[first.step].applied_rate <= 0.50
+            assert by_step[first.step + 1].applied_rate <= 0.50
+            assert by_step[first.step + 2].applied_rate > 0.50
+            checked += 1
+    assert checked >= 1, "テストの前提（ズバリ引きが承認されるまでの時間がある）が崩れている"
+
+
+def test_approval_delay_never_lowers_what_is_on_the_monitor() -> None:
+    """承認待ちがあっても、モニターに出る値引きは下がらない（お客さんの信頼のためのルール）。"""
+    for seed in range(5):
+        outcome = run_simulation(
+            _low_demand_products(), target_waste_rate=0.0, seed=seed, approval_delay_steps=3
+        )
+        for pid in (1, 2, 3):
+            applied = [s.applied_rate for s in sorted(outcome.steps, key=lambda s: s.step) if s.product_id == pid]
+            assert applied == sorted(applied)

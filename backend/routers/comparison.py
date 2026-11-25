@@ -30,6 +30,8 @@ class ComparisonCreate(BaseModel):
     has_event: bool
     #: 動的値引き側にのみ使う。固定スケジュール側は目標廃棄率という概念を持たない（docs/spec.md §5.9）
     target_waste_rate: float = Field(ge=0.0, le=0.10)
+    #: 動的値引き側のズバリ引きの承認の遅れ（docs/spec.md §5.11。POST /api/simulationsと同じ）
+    approval_delay_steps: int = Field(default=0, ge=0, le=3)
 
 
 class ScheduleStepOut(BaseModel):
@@ -101,7 +103,9 @@ def _steps_out(steps: list) -> list[ScheduleStepOut]:
             step=s.step,
             quantity=s.quantity,
             remaining_stock=s.remaining_stock,
-            recommended_rate=s.recommended_rate,
+            # 動的値引き側は、モニターに実際に出ている値引き（承認済み。docs/spec.md §5.11）を返す。
+            # 固定スケジュール側（ScheduleStepResult）はapplied_rateを持たないのでそのまま
+            recommended_rate=getattr(s, "applied_rate", s.recommended_rate),
         )
         for s in steps
     ]
@@ -120,7 +124,12 @@ def compare_schedules(
     # 出発した別のポリシーとして比較できる。docs/spec.md §5.9）
     seed = random.randint(1, 1_000_000)
 
-    dynamic_outcome = run_simulation(inputs, target_waste_rate=body.target_waste_rate, seed=seed)
+    dynamic_outcome = run_simulation(
+        inputs,
+        target_waste_rate=body.target_waste_rate,
+        seed=seed,
+        approval_delay_steps=body.approval_delay_steps,
+    )
     dynamic_finals = {f.product_id: f for f in dynamic_outcome.finals}
     dynamic_steps_by_product: dict[int, list] = {}
     for s in dynamic_outcome.steps:

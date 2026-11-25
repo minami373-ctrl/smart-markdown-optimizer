@@ -6,6 +6,8 @@ export interface CreateSimulationInput {
   day_type: DayType
   has_event: boolean
   target_waste_rate: number
+  //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11。0〜3）
+  approval_delay_steps?: number
 }
 
 export function createSimulation(input: CreateSimulationInput): Promise<SimulationDetail> {

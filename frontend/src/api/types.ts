@@ -12,6 +12,9 @@ export interface StepOut {
   is_new_recommendation: boolean
   posterior_alpha: number | null
   posterior_beta: number | null
+  //: モニターに出ている値引き率（承認済み。docs/spec.md §5.11）。recommended_rateより小さければ
+  // ズバリ引きがナイトマネージャーの承認待ち。古いデータでは無いことがあるので任意
+  applied_rate?: number
 }
 
 export interface FinalOut {
@@ -36,6 +39,8 @@ export interface SimulationSummary {
   day_type: DayType
   has_event: boolean
   target_waste_rate: number
+  //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）
+  approval_delay_steps?: number
   status: string
   started_at: string
   finished_at: string | null

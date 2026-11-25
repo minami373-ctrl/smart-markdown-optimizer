@@ -165,6 +165,7 @@ describe('SimulationPage', () => {
       day_type: '休日',
       has_event: true,
       target_waste_rate: 0.03,
+      approval_delay_steps: 0,
     })
 
     // アニメーション完了（0.5秒間隔で1ステップぶん）を待ってから実績が出る
@@ -473,5 +474,63 @@ describe('SimulationPage', () => {
 
     expect(await screen.findByText('サーバーエラー')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '営業開始' })).not.toBeDisabled()
+  })
+
+  it('ズバリ引きの承認の遅れを選ぶと、その値でシミュレーションを作成する（docs/spec.md §5.11）', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([PRODUCT])
+    const createSpy = vi
+      .spyOn(simulationsApi, 'createSimulation')
+      .mockResolvedValue(makeDetail(1, 0))
+
+    const user = userEvent.setup()
+    render(<SimulationPage />)
+    await screen.findByText('条件を設定して「営業開始」を押してください。')
+
+    await user.selectOptions(screen.getByLabelText('ズバリ引きの承認（ナイトマネージャー）'), '2')
+    await user.click(screen.getByRole('button', { name: '営業開始' }))
+
+    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ approval_delay_steps: 2 }))
+  })
+
+  it('ズバリ引きが承認待ちの間は、モニターには前の値引きを出し「承認待ち」を表示する', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([{ ...PRODUCT, unit_price: 430 }])
+    const detail = makeDetail(1, 0)
+    detail.steps = [
+      {
+        product_id: 1,
+        step: 0,
+        quantity: 0,
+        remaining_stock: 10,
+        recommended_rate: 0.55,
+        applied_rate: 0.5,
+        posterior_mean: 3.5,
+        is_new_recommendation: true,
+        posterior_alpha: 5.0,
+        posterior_beta: 2.0,
+      },
+      {
+        product_id: 1,
+        step: 1,
+        quantity: 0,
+        remaining_stock: 10,
+        recommended_rate: 0.55,
+        applied_rate: 0.5,
+        posterior_mean: 3.5,
+        is_new_recommendation: false,
+        posterior_alpha: 5.0,
+        posterior_beta: 2.0,
+      },
+    ]
+    vi.spyOn(simulationsApi, 'createSimulation').mockResolvedValue(detail)
+
+    const user = userEvent.setup()
+    render(<SimulationPage />)
+    await screen.findByText('条件を設定して「営業開始」を押してください。')
+    await user.click(screen.getByRole('button', { name: '営業開始' }))
+
+    // 商品カードと売り場モニターの両方に、承認済みの「半額」が出る（ズバリ引きはまだ出ない）
+    expect((await screen.findAllByText('半額')).length).toBe(2)
+    expect(screen.getByLabelText('売り場モニター')).not.toHaveTextContent('ズバリ')
+    expect(screen.getByText(/承認待ち：ズバリ ¥190/)).toBeInTheDocument()
   })
 })

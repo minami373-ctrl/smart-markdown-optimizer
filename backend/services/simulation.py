@@ -48,6 +48,8 @@ ZUBARI_START_STEP = 37
 #: ズバリ引きの刻み：半額より下を5%ずつ、下限は元の値段の75%引き（MAX_DISCOUNT）。
 #: 画面にはこの率から計算した10円単位の値段で表示する（frontend/src/lib/discountLabel.ts）
 ZUBARI_TIERS: tuple[float, ...] = (0.55, 0.60, 0.65, 0.70, MAX_DISCOUNT)
+#: 半額。これより大きい値引き（ズバリ引き）だけがナイトマネージャーの承認待ちになる（§5.11）
+HALF_PRICE_RATE = 0.50
 #: 値引き率が取りうる値の全体（DiscountRecommendation.recommended_rateの値の範囲）
 DISCOUNT_TIERS: tuple[float, ...] = PRE_ZUBARI_TIERS + ZUBARI_TIERS
 #: 値引きを検討し始める閾値（docs/spec.md §5.3「トリガー：見込みではなく実際の遅れで判定する」）。
@@ -94,6 +96,10 @@ class ProductStepResult:
     # 需要率の事後分布パラメータ（画面で確率密度曲線を描くために公開する。更新後の値）
     posterior_alpha: float
     posterior_beta: float
+    # 実際に売り場（モニター）に出す値引き率（docs/spec.md §5.11。2026-11-26追加）。
+    # recommended_rateと同じく「次のステップから使う値」。30%・半額は提案と同時に出るが、
+    # ズバリ引きはナイトマネージャーが承認するまで前の値引きのまま
+    applied_rate: float = 0.0
 
 
 @dataclass
@@ -195,8 +201,13 @@ def run_simulation(
     target_waste_rate: float,
     seed: int,
     steps: int = STEPS,
+    approval_delay_steps: int = 0,
 ) -> SimulationOutcome:
     """全商品・全ステップぶんのシミュレーションを実行し、結果を返す（DBは触らない）。
+
+    approval_delay_steps：ズバリ引き（半額より大きい値引き）の提案を、ナイトマネージャーが
+    何ステップ後に承認するか（docs/spec.md §5.11）。0なら提案と同時に承認（以前と同じ動き）。
+    30%引き・半額は自動で出るので、この値の影響を受けない。
 
     乱数は `seed` から決定的に導出する。同じ products・target_waste_rate・seed
     なら常に同じ結果になる。商品ごとに独立した乱数列を持つため、他の商品の有無や
@@ -214,6 +225,9 @@ def run_simulation(
             "remaining": p.initial_stock,
             "discount": 0.0,
             "last_recommended": 0.0,
+            # モニターに出ている値引き率（承認済み）と、承認待ちのズバリ引き（率, 承認されるステップ）
+            "applied": 0.0,
+            "pending": None,
             # 商品ごとに独立した乱数列（他商品の有無・順序に依存しない）
             "rng": random.Random(f"{seed}-{p.product_id}"),
         }
@@ -289,7 +303,18 @@ def run_simulation(
             is_new = round(candidate_rate - state["last_recommended"], 6) >= MIN_RATE_CHANGE
             if is_new:
                 state["last_recommended"] = candidate_rate
-            state["discount"] = state["last_recommended"]
+                if candidate_rate > HALF_PRICE_RATE:
+                    # ズバリ引きはナイトマネージャーの承認待ち（docs/spec.md §5.11）。
+                    # 新しいズバリ引きが出たら、承認待ちをその提案に置き換える
+                    state["pending"] = (candidate_rate, step + approval_delay_steps)
+                else:
+                    # 30%引き・半額は自動で出る（承認待ちにしない）
+                    state["applied"] = candidate_rate
+            if state["pending"] is not None and step >= state["pending"][1]:
+                state["applied"] = state["pending"][0]
+                state["pending"] = None
+            # 実際の購入に効くのはモニターに出ている値引き（承認済み）
+            state["discount"] = state["applied"]
 
             # 画面に出す「事後分布の期待残数」（docs/spec.md §4①・§6）。
             # 「期待」＝平均を使う（残り時間で見込まれる需要の平均を在庫から差し引いた値）
@@ -308,6 +333,7 @@ def run_simulation(
                     is_new_recommendation=is_new,
                     posterior_alpha=state["alpha"],
                     posterior_beta=state["beta"],
+                    applied_rate=state["applied"],
                 )
             )
 

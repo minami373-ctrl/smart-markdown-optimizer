@@ -33,6 +33,9 @@ class SimulationCreate(BaseModel):
     day_type: Literal["平日", "休日"]
     has_event: bool
     target_waste_rate: float = Field(ge=0.0, le=0.10)
+    #: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）。
+    #: 1ステップ18分。0=すぐ、1=18分後、2=36分後、3=54分後
+    approval_delay_steps: int = Field(default=0, ge=0, le=3)
 
 
 class StepOut(BaseModel):
@@ -48,6 +51,9 @@ class StepOut(BaseModel):
     # ライブ実行直後（POST応答）だけ入る。履歴の再構築（GET）では持たないため null
     posterior_alpha: float | None = None
     posterior_beta: float | None = None
+    # モニターに出す値引き率（承認済み。docs/spec.md §5.11）。recommended_rateより小さければ
+    # ズバリ引きが承認待ち
+    applied_rate: float = 0.0
 
 
 class FinalOut(BaseModel):
@@ -73,6 +79,7 @@ class SimulationSummary(BaseModel):
     day_type: str
     has_event: bool
     target_waste_rate: float
+    approval_delay_steps: int = 0
     status: str
     started_at: datetime
     finished_at: datetime | None
@@ -150,6 +157,7 @@ def create_simulation(
         day_type=body.day_type,
         has_event=body.has_event,
         target_waste_rate=body.target_waste_rate,
+        approval_delay_steps=body.approval_delay_steps,
         status="running",
         started_at=datetime.now(),
     )
@@ -158,11 +166,22 @@ def create_simulation(
     session.refresh(run)
 
     # 乱数シードは SimulationRun.id から決定的に導出する（docs/spec.md §5.2）
-    outcome = run_simulation(inputs, target_waste_rate=body.target_waste_rate, seed=run.id)
+    outcome = run_simulation(
+        inputs,
+        target_waste_rate=body.target_waste_rate,
+        seed=run.id,
+        approval_delay_steps=body.approval_delay_steps,
+    )
 
     for s in outcome.steps:
         session.add(
-            PurchaseLog(run_id=run.id, product_id=s.product_id, step=s.step, quantity=s.quantity)
+            PurchaseLog(
+                run_id=run.id,
+                product_id=s.product_id,
+                step=s.step,
+                quantity=s.quantity,
+                applied_rate=s.applied_rate,
+            )
         )
         if s.is_new_recommendation:
             session.add(
@@ -247,6 +266,7 @@ def create_simulation(
         day_type=run.day_type,
         has_event=run.has_event,
         target_waste_rate=run.target_waste_rate,
+        approval_delay_steps=run.approval_delay_steps,
         status=run.status,
         started_at=run.started_at,
         finished_at=run.finished_at,
@@ -264,6 +284,7 @@ def create_simulation(
                 is_new_recommendation=s.is_new_recommendation,
                 posterior_alpha=s.posterior_alpha,
                 posterior_beta=s.posterior_beta,
+                applied_rate=s.applied_rate,
             )
             for s in outcome.steps
         ],
@@ -286,6 +307,7 @@ def list_simulations(session: Session = Depends(get_session)) -> list[Simulation
             day_type=r.day_type,
             has_event=r.has_event,
             target_waste_rate=r.target_waste_rate,
+            approval_delay_steps=r.approval_delay_steps,
             status=r.status,
             started_at=r.started_at,
             finished_at=r.finished_at,
@@ -359,6 +381,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
                 recommended_rate=current_rate.get(log.product_id, 0.0),
                 posterior_mean=None,
                 is_new_recommendation=is_new,
+                applied_rate=log.applied_rate,
             )
         )
 
@@ -374,6 +397,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
         day_type=run.day_type,
         has_event=run.has_event,
         target_waste_rate=run.target_waste_rate,
+        approval_delay_steps=run.approval_delay_steps,
         status=run.status,
         started_at=run.started_at,
         finished_at=run.finished_at,

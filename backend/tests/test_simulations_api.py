@@ -332,3 +332,31 @@ def test_deleted_product_id_is_not_reused_by_sqlite(
 
     assert res.status_code == 201
     assert res.json()["id"] != deleted_id
+
+
+def test_create_simulation_saves_approval_delay_and_returns_applied_rate(
+    session: Session, client: TestClient
+) -> None:
+    """docs/spec.md §5.11：承認の遅れはSimulationRunに保存され、各ステップにapplied_rateが付く。
+    GET（履歴の再構築）でも同じapplied_rateが返る。"""
+    _add_products(session)
+    body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
+    res = client.post("/api/simulations", json={**body, "approval_delay_steps": 2})
+    assert res.status_code == 200
+    created = res.json()
+    assert created["approval_delay_steps"] == 2
+    assert all("applied_rate" in s for s in created["steps"])
+
+    detail = client.get(f"/api/simulations/{created['id']}").json()
+    assert detail["approval_delay_steps"] == 2
+    applied_post = [(s["product_id"], s["step"], s["applied_rate"]) for s in created["steps"]]
+    applied_get = [(s["product_id"], s["step"], s["applied_rate"]) for s in detail["steps"]]
+    assert applied_post == applied_get
+
+
+def test_create_simulation_rejects_approval_delay_out_of_range(
+    session: Session, client: TestClient
+) -> None:
+    _add_products(session)
+    body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
+    assert client.post("/api/simulations", json={**body, "approval_delay_steps": 4}).status_code == 422

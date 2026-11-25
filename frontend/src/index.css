@@ -337,3 +337,48 @@ th {
   color: var(--sub);
   margin-top: 4px;
 }
+
+/* ズバリ引きの承認待ち（docs/spec.md §5.11） */
+.pending-approval {
+  color: var(--warn);
+  font-size: 0.85rem;
+  margin: 0.25rem 0;
+}
+
+/* 売り場モニター（docs/spec.md §4①・§5.11）。シールの代わりにお客さんに見せる表示 */
+.monitor-board {
+  background: #1d2430;
+  color: #f5f5f5;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+.monitor-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+  border-bottom: 1px solid #3a4456;
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+.monitor-board ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.25rem 1rem;
+}
+.monitor-board li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+.monitor-board li.discounted .monitor-price {
+  color: #ffcf5a;
+  font-weight: bold;
+}
+.monitor-label {
+  margin-right: 0.4rem;
+}

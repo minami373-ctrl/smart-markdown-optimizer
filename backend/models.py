@@ -42,6 +42,8 @@ class SimulationRun(SQLModel, table=True):
     day_type: str
     has_event: bool
     target_waste_rate: float
+    # ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11。0〜3）
+    approval_delay_steps: int = 0
     status: str = Field(default="running")  # running / finished
     started_at: datetime
     finished_at: datetime | None = None
@@ -53,6 +55,8 @@ class PurchaseLog(SQLModel, table=True):
     product_id: int = Field(foreign_key="product.id")
     step: int
     quantity: int
+    # このステップの販売後に決まり、次のステップからモニターに出る値引き率（承認済み。§5.11）
+    applied_rate: float = 0.0
 
 
 class DiscountRecommendation(SQLModel, table=True):

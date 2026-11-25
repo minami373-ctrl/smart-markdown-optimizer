@@ -20,6 +20,7 @@ import { buildStockChartData } from '../lib/stockChartData'
 import { chartAxisColors, useTheme } from '../lib/useTheme'
 import type { DayType, Product, SimulationDetail, StepOut, Weather } from '../api/types'
 import { discountLabel } from '../lib/discountLabel'
+import MonitorBoard from '../components/MonitorBoard'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
@@ -28,12 +29,22 @@ const COLORS = ['#d9480f', '#1971c2', '#2f9e44']
 // 目標廃棄率のプリセットボタン（docs/spec.md §4①）。スライダーの値を直接書き換えるだけの補助UI
 const TARGET_WASTE_RATE_PRESETS = [0, 0.03, 0.05, 0.1]
 
+//: ズバリ引きの承認の遅れの選択肢（docs/spec.md §5.11。1ステップ18分）
+const APPROVAL_DELAY_OPTIONS = [
+  { steps: 0, label: 'すぐ承認' },
+  { steps: 1, label: '18分後' },
+  { steps: 2, label: '36分後（忙しい）' },
+  { steps: 3, label: '54分後（1人で回している）' },
+]
+
 export default function SimulationPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [weather, setWeather] = useState<Weather>('晴れ')
   const [dayType, setDayType] = useState<DayType>('平日')
   const [hasEvent, setHasEvent] = useState(false)
   const [targetWasteRate, setTargetWasteRate] = useState(0.03)
+  //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）
+  const [approvalDelaySteps, setApprovalDelaySteps] = useState(0)
 
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,6 +89,7 @@ export default function SimulationPage() {
         day_type: dayType,
         has_event: hasEvent,
         target_waste_rate: targetWasteRate,
+        approval_delay_steps: approvalDelaySteps,
       })
       setDetail(result)
       // 学習の継続（docs/spec.md §2・§5.2 step4）：今回の実行で事前分布が書き換わっているため、
@@ -107,6 +119,7 @@ export default function SimulationPage() {
           day_type: dayType,
           has_event: hasEvent,
           target_waste_rate: targetWasteRate,
+          approval_delay_steps: approvalDelaySteps,
         })
         results.push(result)
       }
@@ -219,6 +232,20 @@ export default function SimulationPage() {
               disabled={running || batchRunning}
             />
           </label>
+          <label>
+            ズバリ引きの承認（ナイトマネージャー）
+            <select
+              value={approvalDelaySteps}
+              onChange={(e) => setApprovalDelaySteps(Number(e.target.value))}
+              disabled={running || batchRunning}
+            >
+              {APPROVAL_DELAY_OPTIONS.map((o) => (
+                <option key={o.steps} value={o.steps}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <span className="preset-buttons">
             {TARGET_WASTE_RATE_PRESETS.map((rate) => (
               <button
@@ -268,6 +295,22 @@ export default function SimulationPage() {
         <p className="clock-display">現在 {stepToClockTime(visibleStep, totalSteps)}</p>
       )}
 
+      {detail && totalSteps > 0 && (
+        <MonitorBoard
+          clock={stepToClockTime(visibleStep, totalSteps)}
+          items={products.map((p) => {
+            const step = latestStepFor(p.id)
+            return {
+              productId: p.id,
+              name: p.name,
+              unitPrice: p.unit_price,
+              appliedRate: step?.applied_rate ?? step?.recommended_rate ?? 0,
+              remainingStock: step?.remaining_stock ?? p.initial_stock,
+            }
+          })}
+        />
+      )}
+
       <div className="product-grid">
         {products.map((p, i) => {
           const step = latestStepFor(p.id)
@@ -283,7 +326,15 @@ export default function SimulationPage() {
               {!detail && <p>条件を設定して「営業開始」を押してください。</p>}
               {detail && !finished && (
                 <>
-                  <div className="rate">{discountLabel(step?.recommended_rate ?? 0, p.unit_price)}</div>
+                  <div className="rate">
+                    {discountLabel(step?.applied_rate ?? step?.recommended_rate ?? 0, p.unit_price)}
+                  </div>
+                  {step && (step.applied_rate ?? step.recommended_rate) < step.recommended_rate && (
+                    <p className="pending-approval">
+                      承認待ち：{discountLabel(step.recommended_rate, p.unit_price)}
+                      （ナイトマネージャーが承認するとモニターに出ます）
+                    </p>
+                  )}
                   <p>
                     残り {step?.remaining_stock ?? p.initial_stock} / {p.initial_stock}
                   </p>
