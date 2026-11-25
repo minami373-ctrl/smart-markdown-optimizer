@@ -533,3 +533,59 @@ def test_discount_never_skips_30_percent_and_holds_it_for_3_steps() -> None:
                 continue
             assert first_30 is not None, f"seed={seed} pid={pid}: 30%引きを飛ばして半額になった"
             assert first_half - first_30 >= MIN_STEPS_AT_30
+
+
+def test_sellout_step_is_not_learned_as_low_demand() -> None:
+    """売り切れたステップ（欲しい数より在庫が少なかった）は打ち切りデータなので学習しない
+    （2026-11-26修正）。需要がとても高く在庫が少ない商品でも、学習後の平均需要が事前分布より
+    大きく下がらない（以前は売れた数＝在庫で頭打ちの数を需要として学習し、どんどん下がっていた）。"""
+    product = make_product(stock=4, alpha=6.0, beta=2.0)  # 平均需要3/ステップ、在庫4個
+    prior_mean = 6.0 / 2.0
+    for seed in range(5):
+        outcome = run_simulation([product], target_waste_rate=0.0, seed=seed)
+        final = outcome.finals[0]
+        assert final.final_alpha / final.final_beta > prior_mean * 0.5
+
+
+# --- 本当の需要と店側の予測を分ける（docs/spec.md §5.14。2026-11-26追加） ---
+
+
+def test_prediction_moves_toward_true_demand_from_a_wrong_start() -> None:
+    """購入は本当の需要から作り、店側の予測はそれを見て学ぶ。最初の予測が本当の需要の半分でも、
+    学習の継続（終わった時点の事後分布を次回の事前分布に）を重ねると本当の需要に近づく。"""
+    true_rate = 1.0
+    alpha, beta = 1.0, 2.0  # 予測の平均0.5（本当の半分）
+    for day in range(15):
+        product = ProductInput(
+            product_id=1, name="x", initial_stock=60, elasticity=0.15,
+            prior_alpha=alpha, prior_beta=beta, true_rate=true_rate,
+        )
+        final = run_simulation([product], target_waste_rate=0.05, seed=100 + day).finals[0]
+        alpha, beta = final.final_alpha, final.final_beta
+    assert 0.85 < alpha / beta / true_rate < 1.15
+
+
+def test_prediction_does_not_drift_to_zero_over_many_days() -> None:
+    """以前は購入を店側の予測から作っていたため、予測がたまたま下がると翌日の客も減り、
+    0に向かって流れていった（たこ焼きが10日で0.374→0.004）。本当の需要を別に持つと流れない。"""
+    alpha, beta = 0.75, 2.0  # 平均0.375（seedのたこ焼き相当）
+    for day in range(20):
+        product = ProductInput(
+            product_id=1, name="x", initial_stock=15, elasticity=0.14,
+            prior_alpha=alpha, prior_beta=beta, true_rate=0.375,
+        )
+        final = run_simulation([product], target_waste_rate=0.05, seed=500 + day).finals[0]
+        alpha, beta = final.final_alpha, final.final_beta
+    assert alpha / beta > 0.375 * 0.7
+
+
+def test_learn_shrinks_exposure_when_the_step_sold_out() -> None:
+    """売り切れたステップは「売り切れるまでの間だけ売っていた」とみなし、露出を縮めて学ぶ。"""
+    from services.simulation import _learn
+
+    # ふつうのステップ：そのまま
+    assert _learn(2.0, 2.0, quantity=3, demanded=3, exposure=1.5) == (5.0, 3.5)
+    # 売り切れ（欲しい5個に対し在庫2個）：予測の平均1.0なら、2個売れるのにかかった露出は2.0だが
+    # このステップの露出1.5を超えないので1.5のまま。予測の平均が4.0なら露出は2÷4＝0.5に縮む
+    assert _learn(2.0, 2.0, quantity=2, demanded=5, exposure=1.5) == (4.0, 3.5)
+    assert _learn(8.0, 2.0, quantity=2, demanded=5, exposure=1.5) == (10.0, 2.5)

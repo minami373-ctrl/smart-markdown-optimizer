@@ -94,6 +94,8 @@ def _build_inputs(products: list[Product], key: str) -> list[ProductInput]:
                 elasticity=p.elasticity,
                 prior_alpha=combo["alpha"],
                 prior_beta=combo["beta"],
+                # お客さんの本当の需要（§5.14）。無ければ事前分布の平均
+                true_rate=(json.loads(p.true_demand).get(key) if p.true_demand else None),
             )
         )
     return inputs

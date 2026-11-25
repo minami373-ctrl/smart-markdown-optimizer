@@ -141,6 +141,25 @@ class ProductInput:
     elasticity: float
     prior_alpha: float
     prior_beta: float
+    #: お客さんの本当の需要（1ステップあたりの平均。docs/spec.md §5.14。2026-11-26追加）。
+    #: 購入はこの値から作り、店側の予測（prior_alpha/prior_beta → 事後分布）はその購入を見て学ぶ。
+    #: 省略時は事前分布の平均を本当の需要として固定する（予測は更新されても需要は動かない）
+    true_rate: float | None = None
+
+
+def _learn(alpha: float, beta: float, quantity: int, demanded: int, exposure: float) -> tuple[float, float]:
+    """1ステップぶんのベイズ更新（ガンマ-ポアソン共役。docs/spec.md §5.2・§5.14）。
+
+    ふつうは alpha += 売れた数、beta += 露出（時間帯の重み×値引きの需要倍率）。
+    このステップで売り切れた（欲しい数より在庫が少なかった）ときは、本当に欲しかった数が分からない
+    打ち切りデータになる。捨てると「需要が少なかったステップ」だけを学ぶ偏りが出るので、
+    「売り切れるまでの間だけ売っていた」とみなし、露出をその割合（売れた数 ÷ 予測の需要）に縮めて学ぶ。
+    """
+    if demanded <= quantity:
+        return alpha + quantity, beta + exposure
+    mean = alpha / beta
+    effective = exposure if mean <= 0 else min(exposure, quantity / mean)
+    return alpha + quantity, beta + effective
 
 
 @dataclass
@@ -305,6 +324,8 @@ def run_simulation(
             "restock": split_stock(p.initial_stock)[1],
             # 16時の補充直後の在庫（夜の値引き判定の基準。補充するまではNone）
             "evening_stock": None,
+            # お客さんの本当の需要（§5.14）。店側の予測とは別に持ち、学習しても変わらない
+            "true_rate": p.true_rate if p.true_rate is not None else p.prior_alpha / p.prior_beta,
             "discount": 0.0,
             "last_recommended": 0.0,
             # モニターに出ている値引き率（承認済み）と、承認待ちのズバリ引き（率, 承認されるステップ）
@@ -338,21 +359,24 @@ def run_simulation(
             #    （2026-08-14に発覚。実際に完売直後から残り39ステップぶんbetaが積み上がり、
             #    「学習の継続」で次回の事前分布が回を追うごとに下振れしていく不具合があった）
             if state["remaining"] > 0:
-                # 実際の購入個数を左右する「真の需要率」は事後分布の平均（期待値）を使う
-                # （値引き率の計算に使う updated_mean と同じ考え方。§5.3参照）
-                demand_rate = state["alpha"] / state["beta"]
+                # 購入はお客さんの本当の需要から作る（§5.14。2026-11-26修正）。以前は店側の予測
+                # （事後分布の平均）から作っていたため、正しい答えが無く、予測がたまたま下がると
+                # 翌日の客も減ってまた下がる…と0に向かって流れていった
+                demand_rate = state["true_rate"]
                 multiplier = discount_multiplier(state["discount"], p.elasticity)
                 # その時間帯の売れやすさ（§5.12）も値引きと同じく「既知の露出」として掛ける
                 exposure = weight * multiplier
                 true_rate = demand_rate * exposure
-                quantity = _sample_poisson(state["rng"], true_rate)
-                quantity = min(quantity, state["remaining"])
+                demanded = _sample_poisson(state["rng"], true_rate)
+                quantity = min(demanded, state["remaining"])
                 state["remaining"] -= quantity
 
-                # ベイズ更新（値引きによる需要倍率と時間帯の重みを「既知の露出」として扱う。
-                # 露出が変わってもガンマ-ポアソン共役のまま：alpha += 個数、beta += 露出）
-                state["alpha"] += quantity
-                state["beta"] += exposure
+                # ベイズ更新（値引きによる需要倍率と時間帯の重みを「既知の露出」として扱う）。
+                # 売り切れたステップは打ち切りデータとして扱う（_learn。2026-11-26修正：以前は
+                # 在庫で頭打ちになった売れた数をそのまま需要として学び、大きく下に見積もっていた）
+                state["alpha"], state["beta"] = _learn(
+                    state["alpha"], state["beta"], quantity, demanded, exposure
+                )
             else:
                 quantity = 0
 

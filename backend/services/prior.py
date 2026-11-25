@@ -16,6 +16,12 @@ EVENT_MULTIPLIER: dict[bool, float] = {False: 1.0, True: 1.4}
 VACATION_MULTIPLIER: dict[bool, float] = {False: 1.0, True: 0.7}
 
 
+def generate_true_demand(base_demand: float) -> dict[str, float]:
+    """お客さんの本当の需要（docs/spec.md §5.14）。事前分布と同じ倍率表で、条件ごとの
+    1ステップあたりの平均需要を返す（＝最初の予測は本当の需要と同じ平均から始まる）。"""
+    return {k: round(v["alpha"] / v["beta"], 4) for k, v in generate_prior_demand(base_demand).items()}
+
+
 def generate_prior_demand(base_demand: float) -> dict[str, dict[str, float]]:
     """基準需要（平日・晴れ・イベントなしの1step平均需要）から24条件ぶん
     （天気3×曜日2×イベント2×長期休み2。docs/spec.md §5.13）のガンマ分布パラメータ

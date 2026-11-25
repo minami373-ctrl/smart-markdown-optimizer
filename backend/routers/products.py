@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 
 from db import get_session
 from models import Product, StockAdjustmentLog
-from services.prior import generate_prior_demand
+from services.prior import generate_prior_demand, generate_true_demand
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -78,6 +78,7 @@ def create_product(
         initial_stock=body.initial_stock,
         elasticity=body.elasticity,
         prior_demand=json.dumps(prior_demand, ensure_ascii=False),
+        true_demand=json.dumps(generate_true_demand(body.base_demand), ensure_ascii=False),
         unit_price=body.unit_price,
     )
     session.add(product)
@@ -102,6 +103,7 @@ def update_product(
     product.initial_stock = body.initial_stock
     product.elasticity = body.elasticity
     product.prior_demand = json.dumps(prior_demand, ensure_ascii=False)
+    product.true_demand = json.dumps(generate_true_demand(body.base_demand), ensure_ascii=False)
     product.unit_price = body.unit_price
     session.add(product)
     session.commit()

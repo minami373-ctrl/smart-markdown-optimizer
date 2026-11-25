@@ -31,6 +31,10 @@ class Product(SQLModel, table=True):
     initial_stock: int
     elasticity: float  # 値引き10%あたりの需要増加倍率
     prior_demand: str  # JSON文字列（12キー、各 {"alpha": float, "beta": float}）
+    # お客さんの本当の需要（docs/spec.md §5.14。2026-11-26追加）。条件キー→1ステップあたりの平均需要の
+    # JSON文字列。シミュレーションの購入はここから作り、prior_demand（店側の予測）はそれを見て学ぶ。
+    # 学習の継続では書き換わらない。空（None）なら事前分布の平均を使う
+    true_demand: str | None = None
     # 単価（円）。任意項目（docs/spec.md §6）。設定されている商品だけシミュレーション画面に
     # 推定売上を表示する。既存のapp.dbには自動マイグレーションされないため再作成が必要
     unit_price: int | None = None

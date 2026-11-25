@@ -26,6 +26,12 @@ def load_products(session: Session) -> int:
                 elasticity=item["elasticity"],
                 prior_demand=json.dumps(item["prior_demand"], ensure_ascii=False),
                 unit_price=item.get("unit_price"),  # 未指定なら None（後方互換）
+                # お客さんの本当の需要（§5.14）。seedに無ければ事前分布の平均を使う
+                true_demand=json.dumps(
+                    item.get("true_demand")
+                    or {k: round(v["alpha"] / v["beta"], 4) for k, v in item["prior_demand"].items()},
+                    ensure_ascii=False,
+                ),
             )
         )
     session.commit()

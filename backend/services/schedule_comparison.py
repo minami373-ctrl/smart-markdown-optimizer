@@ -19,6 +19,7 @@ from services.simulation import (
     RESTOCK_STEP,
     ZUBARI_START_STEP,
     ProductInput,
+    _learn,
     demand_curve,
     split_stock,
     _sample_poisson,
@@ -101,6 +102,9 @@ def run_fixed_schedule_simulation(
     alpha = product.prior_alpha
     beta = product.prior_beta
     remaining, restock = split_stock(product.initial_stock)
+    base_rate = (
+        product.true_rate if product.true_rate is not None else product.prior_alpha / product.prior_beta
+    )
     rng = random.Random(f"{seed}-{product.product_id}")
     curve = demand_curve(steps)
 
@@ -114,19 +118,20 @@ def run_fixed_schedule_simulation(
         # 在庫が残っているステップだけ購入を生成しベイズ更新する。完売後は打ち切りデータの
         # 扱いで更新を止める（services/simulation.pyのrun_simulationと同じ。§5.2 step2b）
         if remaining > 0:
-            demand_rate = alpha / beta
+            # 本当の需要から購入を作る（run_simulationと同じ。§5.14）
+            demand_rate = base_rate
             multiplier = discount_multiplier(rate, product.elasticity)
             exposure = curve[step] * multiplier
             # 「お客さんが待つ」効果（仮定。選んだときだけ）。お客さんの行動の変化なので、
             # 店側の学習（ベイズ更新の露出）には入れず、実際の購入の生成にだけ掛ける
             anticipation = _anticipation_factor(step) if customer_anticipation else 1.0
             true_rate = demand_rate * exposure * anticipation
-            quantity = _sample_poisson(rng, true_rate)
-            quantity = min(quantity, remaining)
+            demanded = _sample_poisson(rng, true_rate)
+            quantity = min(demanded, remaining)
             remaining -= quantity
 
-            alpha += quantity
-            beta += exposure
+            # 売り切れたステップは打ち切りデータとして扱う（run_simulationと同じ。§5.14）
+            alpha, beta = _learn(alpha, beta, quantity, demanded, exposure)
         else:
             quantity = 0
 
