@@ -47,6 +47,7 @@ export interface SimulationSummary {
   //: 長期休み（大学の休み・帰省の期間）の日か（docs/spec.md §5.13）
   is_long_vacation?: boolean
   actual_situation?: string
+  stock_mode?: string
   target_waste_rate: number
   //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）
   approval_delay_steps?: number

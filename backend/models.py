@@ -49,6 +49,8 @@ class SimulationRun(SQLModel, table=True):
     is_long_vacation: bool = False
     # 実際の状況（店は知らない。docs/spec.md §5.16）。いつもどおり／実は長期休み／実は近くでイベント
     actual_situation: str = "いつもどおり"
+    # 作る量の決め方（docs/spec.md §5.17）。いつもの量（Product.initial_stock）／予測から決める
+    stock_mode: str = "いつもの量"
     target_waste_rate: float
     # ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11。0〜3）
     approval_delay_steps: int = 0

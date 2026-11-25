@@ -177,6 +177,12 @@ def unusual_sales_alert(sold: int, expected: float) -> str | None:
     return None
 
 
+def planned_stock(prior_alpha: float, prior_beta: float, steps: int = STEPS) -> int:
+    """その日の条件の予測から作る量を決める（docs/spec.md §5.17。2026-11-26追加）。
+    定価で1日に売れる見込み＝予測の平均（1ステップあたり）×1日の時間帯の重みの合計。四捨五入、最低1個。"""
+    return max(1, round(prior_alpha / prior_beta * sum(demand_curve(steps))))
+
+
 def carry_over(alpha: float, beta: float) -> tuple[float, float]:
     """営業の終わりの事後分布を、次の日の事前分布にする（学習の継続＋古いデータを忘れる。§5.15）。"""
     return alpha * FORGETTING_FACTOR, beta * FORGETTING_FACTOR

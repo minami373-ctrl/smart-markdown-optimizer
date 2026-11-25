@@ -432,3 +432,31 @@ def test_actual_situation_rejects_unknown_values(session: Session, client: TestC
     _add_products(session)
     body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
     assert client.post("/api/simulations", json={**body, "actual_situation": "台風"}).status_code == 422
+
+
+def test_stock_mode_forecast_uses_the_planned_stock_and_skips_auto_adjust(
+    session: Session, client: TestClient
+) -> None:
+    """作る量「予測から決める」（§5.17）：その日の条件の予測から作る量を決め、在庫の自動調整はしない。"""
+    from services.prior import generate_prior_demand, generate_true_demand
+    from services.simulation import planned_stock
+
+    prior = generate_prior_demand(0.5)
+    p = Product(
+        name="唐揚げ弁当", initial_stock=99, elasticity=0.18,
+        prior_demand=json.dumps(prior, ensure_ascii=False),
+        true_demand=json.dumps(generate_true_demand(0.5), ensure_ascii=False),
+    )
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+
+    body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
+    res = client.post("/api/simulations", json={**body, "stock_mode": "予測から決める"}).json()
+    assert res["stock_mode"] == "予測から決める"
+    expected = planned_stock(prior["晴れ_平日_なし"]["alpha"], prior["晴れ_平日_なし"]["beta"])
+    first = min((s for s in res["steps"] if s["product_id"] == p.id), key=lambda s: s["step"])
+    assert first["remaining_stock"] + first["quantity"] == expected
+    assert res["stock_adjustments"] == []
+    session.refresh(p)
+    assert p.initial_stock == 99  # いつもの量は変えない

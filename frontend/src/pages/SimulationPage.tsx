@@ -49,6 +49,8 @@ export default function SimulationPage() {
   const [isLongVacation, setIsLongVacation] = useState(false)
   //: 実際の状況（店は知らない。docs/spec.md §5.16）。入れ忘れの影響と知らせを試すため
   const [actualSituation, setActualSituation] = useState<string>('いつもどおり')
+  //: 作る量の決め方（docs/spec.md §5.17）
+  const [stockMode, setStockMode] = useState<string>('いつもの量')
   const [targetWasteRate, setTargetWasteRate] = useState(0.03)
   //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）
   const [approvalDelaySteps, setApprovalDelaySteps] = useState(0)
@@ -97,6 +99,7 @@ export default function SimulationPage() {
         has_event: hasEvent,
         is_long_vacation: isLongVacation,
         actual_situation: actualSituation,
+        stock_mode: stockMode,
         target_waste_rate: targetWasteRate,
         approval_delay_steps: approvalDelaySteps,
       })
@@ -129,6 +132,7 @@ export default function SimulationPage() {
           has_event: hasEvent,
           is_long_vacation: isLongVacation,
           actual_situation: actualSituation,
+          stock_mode: stockMode,
           target_waste_rate: targetWasteRate,
           approval_delay_steps: approvalDelaySteps,
         })
@@ -295,6 +299,17 @@ export default function SimulationPage() {
               </button>
             ))}
           </span>
+          <label title="予測から決める＝その日の条件（天気・曜日・イベント・長期休み）の予測から、定価で1日に売れる見込みの量を作る">
+            作る量
+            <select
+              value={stockMode}
+              onChange={(e) => setStockMode(e.target.value)}
+              disabled={running || batchRunning}
+            >
+              <option value="いつもの量">いつもの量</option>
+              <option value="予測から決める">予測から決める</option>
+            </select>
+          </label>
           <label>
             ズバリ引きの承認（ナイトマネージャー）
             <select

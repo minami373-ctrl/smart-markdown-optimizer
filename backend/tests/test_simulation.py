@@ -648,3 +648,11 @@ def test_alert_appears_only_from_the_alert_step_when_true_demand_is_much_lower()
     outcome = run_simulation([product], target_waste_rate=0.05, seed=3)
     assert all(s.alert is None for s in outcome.steps if s.step < ALERT_STEP)
     assert all(s.alert == "low" for s in outcome.steps if s.step >= ALERT_STEP)
+
+
+def test_planned_stock_is_the_full_price_demand_of_the_day() -> None:
+    """予測から作る量を決める（§5.17）：予測の平均×1日の時間帯の重みの合計（＝40）を四捨五入。"""
+    from services.simulation import planned_stock
+
+    assert planned_stock(1.0, 2.0) == 20  # 平均0.5 × 40ステップ
+    assert planned_stock(0.01, 2.0) == 1  # 最低1個

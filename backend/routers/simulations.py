@@ -22,7 +22,13 @@ from models import (
     SimulationRun,
     StockAdjustmentLog,
 )
-from services.simulation import ProductInput, carry_over, condition_key, run_simulation
+from services.simulation import (
+    ProductInput,
+    carry_over,
+    condition_key,
+    planned_stock,
+    run_simulation,
+)
 from services.stock_adjustment import compute_stock_adjustment
 
 #: 実際の状況（docs/spec.md §5.16）。店が入れた条件とは別に、お客さんの本当の需要をどの条件で作るか。
@@ -51,6 +57,9 @@ class SimulationCreate(BaseModel):
     is_long_vacation: bool = False
     #: 実際の状況（店は知らない。docs/spec.md §5.16）。お客さんの本当の需要だけがこの条件で決まる
     actual_situation: ActualSituation = "いつもどおり"
+    #: 作る量の決め方（docs/spec.md §5.17）。「予測から決める」なら、その日の条件の予測から作る量を決め、
+    #: 在庫の自動調整（§5.7）は行わない
+    stock_mode: Literal["いつもの量", "予測から決める"] = "いつもの量"
     target_waste_rate: float = Field(ge=0.0, le=0.10)
     #: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）。
     #: 1ステップ18分。0=すぐ、1=18分後、2=36分後、3=54分後
@@ -101,6 +110,7 @@ class SimulationSummary(BaseModel):
     has_event: bool
     is_long_vacation: bool = False
     actual_situation: str = "いつもどおり"
+    stock_mode: str = "いつもの量"
     target_waste_rate: float
     approval_delay_steps: int = 0
     status: str
@@ -184,6 +194,11 @@ def create_simulation(
         body.weather, body.day_type, body.has_event, body.is_long_vacation, body.actual_situation
     )
     inputs = _build_inputs(products, key, true_key)
+    if body.stock_mode == "予測から決める":
+        # 作る量をその日の条件の予測から決める（§5.17）。SimulationResultにはこの量を残す
+        for inp in inputs:
+            inp.initial_stock = planned_stock(inp.prior_alpha, inp.prior_beta)
+            initial_stock_snapshot[inp.product_id] = inp.initial_stock
 
     run = SimulationRun(
         weather=body.weather,
@@ -191,6 +206,7 @@ def create_simulation(
         has_event=body.has_event,
         is_long_vacation=body.is_long_vacation,
         actual_situation=body.actual_situation,
+        stock_mode=body.stock_mode,
         target_waste_rate=body.target_waste_rate,
         approval_delay_steps=body.approval_delay_steps,
         status="running",
@@ -262,8 +278,11 @@ def create_simulation(
         recommendation_steps = [
             (s.step, s.recommended_rate) for s in product_steps if s.is_new_recommendation
         ]
-        adjustment = compute_stock_adjustment(
-            product.initial_stock, log_steps, recommendation_steps
+        # 「予測から決める」の日は作る量を予測で決めているので、いつもの量の自動調整はしない（§5.17）
+        adjustment = (
+            None
+            if body.stock_mode == "予測から決める"
+            else compute_stock_adjustment(product.initial_stock, log_steps, recommendation_steps)
         )
         if adjustment is not None:
             product.initial_stock = adjustment.new_initial_stock
@@ -304,6 +323,7 @@ def create_simulation(
         has_event=run.has_event,
         is_long_vacation=run.is_long_vacation,
         actual_situation=run.actual_situation,
+        stock_mode=run.stock_mode,
         target_waste_rate=run.target_waste_rate,
         approval_delay_steps=run.approval_delay_steps,
         status=run.status,
@@ -348,6 +368,7 @@ def list_simulations(session: Session = Depends(get_session)) -> list[Simulation
             has_event=r.has_event,
             is_long_vacation=r.is_long_vacation,
             actual_situation=r.actual_situation,
+            stock_mode=r.stock_mode,
             target_waste_rate=r.target_waste_rate,
             approval_delay_steps=r.approval_delay_steps,
             status=r.status,
@@ -440,6 +461,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
         has_event=run.has_event,
         is_long_vacation=run.is_long_vacation,
         actual_situation=run.actual_situation,
+        stock_mode=run.stock_mode,
         target_waste_rate=run.target_waste_rate,
         approval_delay_steps=run.approval_delay_steps,
         status=run.status,

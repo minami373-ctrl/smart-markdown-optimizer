@@ -9,6 +9,8 @@ export interface CreateSimulationInput {
   is_long_vacation?: boolean
   //: 実際の状況（店は知らない。docs/spec.md §5.16）
   actual_situation?: string
+  //: 作る量の決め方（docs/spec.md §5.17）
+  stock_mode?: string
   target_waste_rate: number
   //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11。0〜3）
   approval_delay_steps?: number
