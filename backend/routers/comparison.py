@@ -21,6 +21,21 @@ from services.schedule_comparison import (
 )
 from services.simulation import ProductInput, condition_key, run_simulation
 
+#: 実際の状況（docs/spec.md §5.16）。店が入れた条件とは別に、お客さんの本当の需要をどの条件で作るか。
+#: 「実は長期休み」＝店は長期休みを入れ忘れた、「実は近くでイベント」＝店は知らなかった
+ActualSituation = Literal["いつもどおり", "実は長期休み", "実は近くでイベント"]
+
+
+def actual_key(weather: str, day_type: str, has_event: bool, is_long_vacation: bool, situation: str) -> str:
+    """お客さんの本当の需要を引く条件キー（店が入れた条件に、実際の状況を重ねる）。"""
+    return condition_key(
+        weather,
+        day_type,
+        has_event or situation == "実は近くでイベント",
+        is_long_vacation or situation == "実は長期休み",
+    )
+
+
 router = APIRouter(prefix="/api/compare", tags=["comparison"])
 
 
@@ -30,6 +45,8 @@ class ComparisonCreate(BaseModel):
     has_event: bool
     #: 長期休みの日か（docs/spec.md §5.13）
     is_long_vacation: bool = False
+    #: 実際の状況（店は知らない。docs/spec.md §5.16）
+    actual_situation: ActualSituation = "いつもどおり"
     #: 動的値引き側にのみ使う。固定スケジュール側は目標廃棄率という概念を持たない（docs/spec.md §5.9）
     target_waste_rate: float = Field(ge=0.0, le=0.10)
     #: 動的値引き側のズバリ引きの承認の遅れ（docs/spec.md §5.11。POST /api/simulationsと同じ）
@@ -76,7 +93,9 @@ def _load_all_products(session: Session) -> list[Product]:
     return products
 
 
-def _build_inputs(products: list[Product], key: str) -> list[ProductInput]:
+def _build_inputs(
+    products: list[Product], key: str, true_key: str | None = None
+) -> list[ProductInput]:
     """商品ごとに条件キーの事前分布を引く（routers/simulations.pyの同名関数と同じ考え方）。"""
     inputs: list[ProductInput] = []
     for p in products:
@@ -94,8 +113,11 @@ def _build_inputs(products: list[Product], key: str) -> list[ProductInput]:
                 elasticity=p.elasticity,
                 prior_alpha=combo["alpha"],
                 prior_beta=combo["beta"],
-                # お客さんの本当の需要（§5.14）。無ければ事前分布の平均
-                true_rate=(json.loads(p.true_demand).get(key) if p.true_demand else None),
+                # お客さんの本当の需要（§5.14）。実際の状況（§5.16）があればその条件で引く。
+                # 無ければ事前分布の平均
+                true_rate=(
+                    json.loads(p.true_demand).get(true_key or key) if p.true_demand else None
+                ),
             )
         )
     return inputs
@@ -123,7 +145,10 @@ def compare_schedules(
 ) -> ComparisonOut:
     products = _load_all_products(session)
     key = condition_key(body.weather, body.day_type, body.has_event, body.is_long_vacation)
-    inputs = _build_inputs(products, key)
+    true_key = actual_key(
+        body.weather, body.day_type, body.has_event, body.is_long_vacation, body.actual_situation
+    )
+    inputs = _build_inputs(products, key, true_key)
 
     # DBに保存しない一過性の比較のため、SimulationRun.idではなくその場で乱数シードを選ぶ
     # （動的値引き・固定スケジュールの両方が同じシードを使うことで、同じ「その日の運」から

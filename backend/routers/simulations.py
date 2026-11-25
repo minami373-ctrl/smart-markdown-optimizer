@@ -25,6 +25,21 @@ from models import (
 from services.simulation import ProductInput, carry_over, condition_key, run_simulation
 from services.stock_adjustment import compute_stock_adjustment
 
+#: 実際の状況（docs/spec.md §5.16）。店が入れた条件とは別に、お客さんの本当の需要をどの条件で作るか。
+#: 「実は長期休み」＝店は長期休みを入れ忘れた、「実は近くでイベント」＝店は知らなかった
+ActualSituation = Literal["いつもどおり", "実は長期休み", "実は近くでイベント"]
+
+
+def actual_key(weather: str, day_type: str, has_event: bool, is_long_vacation: bool, situation: str) -> str:
+    """お客さんの本当の需要を引く条件キー（店が入れた条件に、実際の状況を重ねる）。"""
+    return condition_key(
+        weather,
+        day_type,
+        has_event or situation == "実は近くでイベント",
+        is_long_vacation or situation == "実は長期休み",
+    )
+
+
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
 
 
@@ -34,6 +49,8 @@ class SimulationCreate(BaseModel):
     has_event: bool
     #: 長期休み（大学の休み・帰省の期間）の日か（docs/spec.md §5.13）。人がカレンダーを見て入れる
     is_long_vacation: bool = False
+    #: 実際の状況（店は知らない。docs/spec.md §5.16）。お客さんの本当の需要だけがこの条件で決まる
+    actual_situation: ActualSituation = "いつもどおり"
     target_waste_rate: float = Field(ge=0.0, le=0.10)
     #: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）。
     #: 1ステップ18分。0=すぐ、1=18分後、2=36分後、3=54分後
@@ -56,6 +73,8 @@ class StepOut(BaseModel):
     # モニターに出す値引き率（承認済み。docs/spec.md §5.11）。recommended_rateより小さければ
     # ズバリ引きが承認待ち
     applied_rate: float = 0.0
+    # 「いつもと違う」の知らせ（docs/spec.md §5.16）。POSTの応答だけ（履歴の再構築では null）
+    alert: str | None = None
 
 
 class FinalOut(BaseModel):
@@ -81,6 +100,7 @@ class SimulationSummary(BaseModel):
     day_type: str
     has_event: bool
     is_long_vacation: bool = False
+    actual_situation: str = "いつもどおり"
     target_waste_rate: float
     approval_delay_steps: int = 0
     status: str
@@ -117,7 +137,9 @@ def _finals_out(results: list, names: dict[int, str]) -> list[FinalOut]:
     ]
 
 
-def _build_inputs(products: list[Product], key: str) -> list[ProductInput]:
+def _build_inputs(
+    products: list[Product], key: str, true_key: str | None = None
+) -> list[ProductInput]:
     """商品ごとに条件キーの事前分布を引く。1つでも欠けていたら例外を投げる
     （DBへの書き込みより前に呼ぶこと。壊れた SimulationRun を残さないため）。"""
     inputs: list[ProductInput] = []
@@ -136,8 +158,11 @@ def _build_inputs(products: list[Product], key: str) -> list[ProductInput]:
                 elasticity=p.elasticity,
                 prior_alpha=combo["alpha"],
                 prior_beta=combo["beta"],
-                # お客さんの本当の需要（§5.14）。無ければ事前分布の平均
-                true_rate=(json.loads(p.true_demand).get(key) if p.true_demand else None),
+                # お客さんの本当の需要（§5.14）。実際の状況（§5.16）があればその条件で引く。
+                # 無ければ事前分布の平均
+                true_rate=(
+                    json.loads(p.true_demand).get(true_key or key) if p.true_demand else None
+                ),
             )
         )
     return inputs
@@ -155,13 +180,17 @@ def create_simulation(
     # 先に事前分布を検証する。ここで失敗しても SimulationRun はまだDBに存在しないので、
     # 「running のまま完了しない孤立レコード」が履歴に残らない
     key = condition_key(body.weather, body.day_type, body.has_event, body.is_long_vacation)
-    inputs = _build_inputs(products, key)
+    true_key = actual_key(
+        body.weather, body.day_type, body.has_event, body.is_long_vacation, body.actual_situation
+    )
+    inputs = _build_inputs(products, key, true_key)
 
     run = SimulationRun(
         weather=body.weather,
         day_type=body.day_type,
         has_event=body.has_event,
         is_long_vacation=body.is_long_vacation,
+        actual_situation=body.actual_situation,
         target_waste_rate=body.target_waste_rate,
         approval_delay_steps=body.approval_delay_steps,
         status="running",
@@ -274,6 +303,7 @@ def create_simulation(
         day_type=run.day_type,
         has_event=run.has_event,
         is_long_vacation=run.is_long_vacation,
+        actual_situation=run.actual_situation,
         target_waste_rate=run.target_waste_rate,
         approval_delay_steps=run.approval_delay_steps,
         status=run.status,
@@ -294,6 +324,7 @@ def create_simulation(
                 posterior_alpha=s.posterior_alpha,
                 posterior_beta=s.posterior_beta,
                 applied_rate=s.applied_rate,
+                alert=s.alert,
             )
             for s in outcome.steps
         ],
@@ -316,6 +347,7 @@ def list_simulations(session: Session = Depends(get_session)) -> list[Simulation
             day_type=r.day_type,
             has_event=r.has_event,
             is_long_vacation=r.is_long_vacation,
+            actual_situation=r.actual_situation,
             target_waste_rate=r.target_waste_rate,
             approval_delay_steps=r.approval_delay_steps,
             status=r.status,
@@ -407,6 +439,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
         day_type=run.day_type,
         has_event=run.has_event,
         is_long_vacation=run.is_long_vacation,
+        actual_situation=run.actual_situation,
         target_waste_rate=run.target_waste_rate,
         approval_delay_steps=run.approval_delay_steps,
         status=run.status,

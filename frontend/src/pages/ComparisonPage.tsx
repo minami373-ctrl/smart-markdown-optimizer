@@ -14,6 +14,7 @@ import { stepToClockTime } from '../lib/clock'
 import { computeRevenue } from '../lib/revenue'
 import { chartAxisColors, useTheme } from '../lib/useTheme'
 import type { ComparisonProduct, ComparisonResult, DayType, Weather } from '../api/types'
+import { ACTUAL_SITUATIONS } from '../api/types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
@@ -128,6 +129,7 @@ export default function ComparisonPage() {
   const [dayType, setDayType] = useState<DayType>('平日')
   const [hasEvent, setHasEvent] = useState(false)
   const [isLongVacation, setIsLongVacation] = useState(false)
+  const [actualSituation, setActualSituation] = useState<string>('いつもどおり')
   const [targetWasteRate, setTargetWasteRate] = useState(0.03)
   //: 「お客さんが待つ」効果（docs/spec.md §5.12。売り場での観察にもとづく仮定なので切り替えられる）
   const [customerAnticipation, setCustomerAnticipation] = useState(false)
@@ -146,6 +148,7 @@ export default function ComparisonPage() {
         day_type: dayType,
         has_event: hasEvent,
         is_long_vacation: isLongVacation,
+        actual_situation: actualSituation,
         target_waste_rate: targetWasteRate,
         customer_anticipation: customerAnticipation,
       })
@@ -209,6 +212,20 @@ export default function ComparisonPage() {
               onChange={(e) => setIsLongVacation(e.target.checked)}
               disabled={running}
             />
+          </label>
+          <label>
+            実際の状況（店は知らない）
+            <select
+              value={actualSituation}
+              onChange={(e) => setActualSituation(e.target.value)}
+              disabled={running}
+            >
+              {ACTUAL_SITUATIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </label>
           <label title="値引きの時刻が毎日同じだと、お客さんが覚えて待つ（18時台は買い控え、30%引きの間も半額を待つ）。売り場での観察にもとづく仮定">
             お客さんが値引きの時刻を覚えて待つ（仮定・固定スケジュール側のみ）

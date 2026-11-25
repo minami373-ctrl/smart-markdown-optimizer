@@ -165,6 +165,7 @@ describe('SimulationPage', () => {
       day_type: '休日',
       has_event: true,
       is_long_vacation: false,
+      actual_situation: 'いつもどおり',
       target_waste_rate: 0.03,
       approval_delay_steps: 0,
     })

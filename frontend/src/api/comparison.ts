@@ -7,6 +7,8 @@ export interface CompareInput {
   has_event: boolean
   //: 長期休みの日か（docs/spec.md §5.13）
   is_long_vacation?: boolean
+  //: 実際の状況（店は知らない。docs/spec.md §5.16）
+  actual_situation?: string
   target_waste_rate: number
   //: 「お客さんが値引きの時刻を覚えて待つ」効果を固定スケジュール側に入れるか（docs/spec.md §5.12。仮定）
   customer_anticipation?: boolean

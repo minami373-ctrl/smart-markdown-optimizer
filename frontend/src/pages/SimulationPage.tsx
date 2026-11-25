@@ -18,6 +18,8 @@ import { buildLearningCurveData } from '../lib/learningCurveData'
 import { computeRevenue } from '../lib/revenue'
 import { CATEGORY_COLORS, buildCategoryStockChartData } from '../lib/stockChartData'
 import { dayPhase } from '../lib/dayPhase'
+import { storeAlert } from '../lib/storeAlert'
+import { ACTUAL_SITUATIONS } from '../api/types'
 import { chartAxisColors, useTheme } from '../lib/useTheme'
 import type { DayType, Product, SimulationDetail, StepOut, Weather } from '../api/types'
 import { discountLabel } from '../lib/discountLabel'
@@ -45,6 +47,8 @@ export default function SimulationPage() {
   const [hasEvent, setHasEvent] = useState(false)
   //: 長期休み（大学の休み・帰省の期間）の日か（docs/spec.md §5.13）
   const [isLongVacation, setIsLongVacation] = useState(false)
+  //: 実際の状況（店は知らない。docs/spec.md §5.16）。入れ忘れの影響と知らせを試すため
+  const [actualSituation, setActualSituation] = useState<string>('いつもどおり')
   const [targetWasteRate, setTargetWasteRate] = useState(0.03)
   //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）
   const [approvalDelaySteps, setApprovalDelaySteps] = useState(0)
@@ -92,6 +96,7 @@ export default function SimulationPage() {
         day_type: dayType,
         has_event: hasEvent,
         is_long_vacation: isLongVacation,
+        actual_situation: actualSituation,
         target_waste_rate: targetWasteRate,
         approval_delay_steps: approvalDelaySteps,
       })
@@ -123,6 +128,7 @@ export default function SimulationPage() {
           day_type: dayType,
           has_event: hasEvent,
           is_long_vacation: isLongVacation,
+          actual_situation: actualSituation,
           target_waste_rate: targetWasteRate,
           approval_delay_steps: approvalDelaySteps,
         })
@@ -199,6 +205,8 @@ export default function SimulationPage() {
   }
 
   const finished = detail !== null && visibleStep >= totalSteps && totalSteps > 0
+  // 店全体の「いつもと違う」の知らせ（§5.16）。各商品の今のステップの知らせから求める
+  const currentStoreAlert = detail ? storeAlert(products.map((p) => latestStepFor(p.id)?.alert)) : null
 
   return (
     <div>
@@ -308,6 +316,23 @@ export default function SimulationPage() {
           </button>
         </div>
         <div className="field-group batch">
+          <span className="group-label">シミュレーション用：実際の状況（店は知らない）</span>
+          <label title="お客さんの本当の需要だけがこの状況で決まる。店の予測は上で入れた条件のまま">
+            実際の状況
+            <select
+              value={actualSituation}
+              onChange={(e) => setActualSituation(e.target.value)}
+              disabled={running || batchRunning}
+            >
+              {ACTUAL_SITUATIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="field-group batch">
           <span className="group-label">学習の様子を見る（同じ条件で何日分か続けて営業）</span>
           <label>
             連続実行（同条件で学習を進める）
@@ -352,6 +377,12 @@ export default function SimulationPage() {
             />
           )}
         </>
+      )}
+
+      {detail && totalSteps > 0 && currentStoreAlert && (
+        <p className="store-alert" role="status">
+          {currentStoreAlert}
+        </p>
       )}
 
       {detail && totalSteps > 0 && !finished && (

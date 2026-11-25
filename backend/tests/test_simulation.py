@@ -623,3 +623,28 @@ def test_forgetting_catches_up_faster_when_demand_changes() -> None:
     with_forgetting = _learn_days(days, forget=True)
     without = _learn_days(days, forget=False)
     assert abs(with_forgetting - 0.6) < abs(without - 0.6)
+
+
+# --- 「いつもと違う」の知らせ（docs/spec.md §5.16。2026-11-26追加） ---
+
+
+def test_unusual_sales_alert_thresholds() -> None:
+    from services.simulation import unusual_sales_alert
+
+    assert unusual_sales_alert(sold=6, expected=10.0) == "low"
+    assert unusual_sales_alert(sold=7, expected=10.0) is None
+    assert unusual_sales_alert(sold=14, expected=10.0) == "high"
+    assert unusual_sales_alert(sold=0, expected=2.0) is None  # 予測が少なすぎる商品は判定しない
+
+
+def test_alert_appears_only_from_the_alert_step_when_true_demand_is_much_lower() -> None:
+    """本当の需要が店の予測の半分（例：長期休みの入れ忘れ）なら、昼過ぎ（ALERT_STEP）から「low」が付く。"""
+    from services.simulation import ALERT_STEP
+
+    product = ProductInput(
+        product_id=1, name="x", initial_stock=200, elasticity=0.15,
+        prior_alpha=8.0, prior_beta=2.0, true_rate=2.0,
+    )
+    outcome = run_simulation([product], target_waste_rate=0.05, seed=3)
+    assert all(s.alert is None for s in outcome.steps if s.step < ALERT_STEP)
+    assert all(s.alert == "low" for s in outcome.steps if s.step >= ALERT_STEP)

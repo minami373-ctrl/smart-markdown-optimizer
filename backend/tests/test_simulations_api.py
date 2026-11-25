@@ -398,3 +398,37 @@ def test_long_vacation_learning_does_not_change_normal_day_prior(
     after = json.loads(p.prior_demand)
     assert after["晴れ_平日_なし"] == before["晴れ_平日_なし"]
     assert after["晴れ_平日_なし_長期休み"] != before["晴れ_平日_なし_長期休み"]
+
+
+def test_forgotten_vacation_uses_vacation_demand_but_learns_into_the_normal_key(
+    session: Session, client: TestClient
+) -> None:
+    """実際の状況「実は長期休み」（店は入れ忘れ。§5.16）：お客さんの需要は長期休みの条件で作られるが、
+    店は知らないので、学習はふだんの日のキーに書き戻される（入れ忘れの害＝ふだんの予測に混ざる）。"""
+    from services.prior import generate_prior_demand, generate_true_demand
+
+    p = Product(
+        name="唐揚げ弁当", initial_stock=40, elasticity=0.18,
+        prior_demand=json.dumps(generate_prior_demand(0.8), ensure_ascii=False),
+        true_demand=json.dumps(generate_true_demand(0.8), ensure_ascii=False),
+    )
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    before = json.loads(p.prior_demand)
+
+    body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
+    res = client.post("/api/simulations", json={**body, "actual_situation": "実は長期休み"})
+    assert res.status_code == 200
+    assert res.json()["actual_situation"] == "実は長期休み"
+
+    session.refresh(p)
+    after = json.loads(p.prior_demand)
+    assert after["晴れ_平日_なし"] != before["晴れ_平日_なし"]
+    assert after["晴れ_平日_なし_長期休み"] == before["晴れ_平日_なし_長期休み"]
+
+
+def test_actual_situation_rejects_unknown_values(session: Session, client: TestClient) -> None:
+    _add_products(session)
+    body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
+    assert client.post("/api/simulations", json={**body, "actual_situation": "台風"}).status_code == 422

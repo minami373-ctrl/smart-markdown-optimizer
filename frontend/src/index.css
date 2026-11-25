@@ -714,3 +714,13 @@ details.model summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* 店全体の「いつもと違う」の知らせ（docs/spec.md §5.16） */
+.store-alert {
+  border: 1px solid var(--accent);
+  border-left-width: 4px;
+  background: var(--panel);
+  padding: 8px 12px;
+  margin: 0 0 14px;
+  font-weight: 600;
+}

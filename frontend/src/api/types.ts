@@ -15,7 +15,13 @@ export interface StepOut {
   //: モニターに出ている値引き率（承認済み。docs/spec.md §5.11）。recommended_rateより小さければ
   // ズバリ引きがナイトマネージャーの承認待ち。古いデータでは無いことがあるので任意
   applied_rate?: number
+  //: 「いつもと違う」の知らせ（docs/spec.md §5.16）。POSTの応答だけ
+  alert?: 'low' | 'high' | null
 }
+
+/** 実際の状況（店は知らない。docs/spec.md §5.16） */
+export const ACTUAL_SITUATIONS = ['いつもどおり', '実は長期休み', '実は近くでイベント'] as const
+export type ActualSituation = (typeof ACTUAL_SITUATIONS)[number]
 
 export interface FinalOut {
   product_id: number
@@ -40,6 +46,7 @@ export interface SimulationSummary {
   has_event: boolean
   //: 長期休み（大学の休み・帰省の期間）の日か（docs/spec.md §5.13）
   is_long_vacation?: boolean
+  actual_situation?: string
   target_waste_rate: number
   //: ズバリ引きをナイトマネージャーが何ステップ後に承認するか（docs/spec.md §5.11）
   approval_delay_steps?: number

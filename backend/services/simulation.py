@@ -154,6 +154,29 @@ class ProductInput:
 FORGETTING_FACTOR = 0.9
 
 
+#: 「いつもと違う」を判定するステップ（docs/spec.md §5.16。2026-11-26追加）。昼の山（12時台）が終わった
+#: 13:00＝ステップ10の販売の後。夜の作る量はもう決まっているので、値引きの判断の参考と、
+#: 次の日に条件（長期休み・イベント）の入れ忘れに気づくための知らせ
+ALERT_STEP = 10
+#: 開店からここまでに売れた数が、店側の予測（その日の事前分布の平均）の何倍より少ない／多いと知らせるか
+ALERT_LOW_RATIO = 0.7
+ALERT_HIGH_RATIO = 1.3
+#: 予測した数がこれより少ない商品は、ばらつきが大きいので判定しない
+ALERT_MIN_EXPECTED = 3.0
+
+
+def unusual_sales_alert(sold: int, expected: float) -> str | None:
+    """開店から昼過ぎまでに売れた数を予測と比べ、大きく外れていたら知らせの種類を返す（§5.16）。"""
+    if expected < ALERT_MIN_EXPECTED:
+        return None
+    ratio = sold / expected
+    if ratio < ALERT_LOW_RATIO:
+        return "low"
+    if ratio > ALERT_HIGH_RATIO:
+        return "high"
+    return None
+
+
 def carry_over(alpha: float, beta: float) -> tuple[float, float]:
     """営業の終わりの事後分布を、次の日の事前分布にする（学習の継続＋古いデータを忘れる。§5.15）。"""
     return alpha * FORGETTING_FACTOR, beta * FORGETTING_FACTOR
@@ -190,6 +213,9 @@ class ProductStepResult:
     # recommended_rateと同じく「次のステップから使う値」。30%・半額は提案と同時に出るが、
     # ズバリ引きはナイトマネージャーが承認するまで前の値引きのまま
     applied_rate: float = 0.0
+    # 「いつもと違う」の知らせ（§5.16）。ALERT_STEP以降のステップに付く。"low"＝いつもより売れていない、
+    # "high"＝いつもより売れている、None＝いつもどおり（または判定前・判定できない）
+    alert: str | None = None
 
 
 @dataclass
@@ -345,6 +371,9 @@ def run_simulation(
             "pending": None,
             # 最後に値引きを上げたステップ（30%引きを続けた長さを数えるため）
             "raised_at": -1,
+            # 「いつもと違う」の知らせ（§5.16）と、開店からの販売数
+            "alert": None,
+            "sold_so_far": 0,
             # 商品ごとに独立した乱数列（他商品の有無・順序に依存しない）
             "rng": random.Random(f"{seed}-{p.product_id}"),
         }
@@ -391,6 +420,15 @@ def run_simulation(
                 )
             else:
                 quantity = 0
+
+            # 2.5) 「いつもと違う」の判定（§5.16）。昼の山が終わった時点で、開店からの販売数を
+            #      その日の店側の予測（事前分布の平均×時間帯の重み）と比べる。朝の分しか並んでいないので、
+            #      予測が朝の分より多ければ朝の分を上限にする
+            state["sold_so_far"] += quantity
+            if step == ALERT_STEP:
+                predicted = (p.prior_alpha / p.prior_beta) * sum(curve[: step + 1])
+                predicted = min(predicted, split_stock(p.initial_stock)[0])
+                state["alert"] = unusual_sales_alert(state["sold_so_far"], predicted)
 
             # 3) 次の値引き率を計算。「判定」と「値引き幅」を分離した（2026-08-15改訂。
             #    docs/spec.md §5.3）。判定は実際に売れた個数と目標ペースの比較（統計的な
@@ -488,6 +526,7 @@ def run_simulation(
                     posterior_alpha=state["alpha"],
                     posterior_beta=state["beta"],
                     applied_rate=state["applied"],
+                    alert=state["alert"],
                 )
             )
 
