@@ -27,6 +27,7 @@ GRACE_PERIOD_STEPS（開店直後の様子見期間）は実績ベースの判�
 効きが弱すぎたため。
 """
 
+import math
 import random
 from dataclasses import dataclass, field
 
@@ -164,7 +165,10 @@ def _required_discount_rate(
     needed_multiplier = required_demand / baseline_projected
     if elasticity <= 0:
         return 0.0
-    rate = (needed_multiplier - 1.0) * DISCOUNT_STEP_UNIT / elasticity
+    # discount_multiplier（需要倍率 = 1 + 感度 × (値引き率 ÷ 10%)²）の逆算。
+    # 2026-11-26修正：需要倍率の式は2026-08-15に1乗から2乗へ変えていたが、ここの逆算だけ
+    # 1乗の式（(倍率-1) × 10% ÷ 感度）のまま残っていて、必要な値引き幅を大きめに見積もっていた
+    rate = DISCOUNT_STEP_UNIT * math.sqrt((needed_multiplier - 1.0) / elasticity)
     return max(MIN_DISCOUNT, min(MAX_DISCOUNT, rate))
 
 

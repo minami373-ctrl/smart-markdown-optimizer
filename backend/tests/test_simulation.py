@@ -400,3 +400,17 @@ def test_zubari_discount_only_appears_from_step_37() -> None:
     # 売れ行きがよい乱数では半額のままで間に合うこともある（それは正しい動き）。
     # テストの前提として、少なくとも1つのseedでは21時以降にズバリ引きへ進むことを確認する
     assert reached_zubari >= 1
+
+
+def test_required_discount_rate_is_inverse_of_discount_multiplier() -> None:
+    """値引き幅の逆算は、需要倍率の式（2乗。discount_multiplier）とぴったり逆になっている
+    （2026-11-26修正。以前は1乗の式で逆算していて、必要な値引きを大きめに見積もっていた）。
+    求めた値引き率で需要倍率を計算し直すと、必要だった倍率に戻ることを確認する。"""
+    rate = _required_discount_rate(
+        remaining_stock=20, remaining_steps=10, target_waste_stock=0, baseline_rate=1.0, elasticity=0.15
+    )
+    # 必要な倍率 = 20 / (1.0 × 10) = 2.0
+    assert 0.0 < rate < MAX_DISCOUNT
+    assert abs(discount_multiplier(rate, elasticity=0.15) - 2.0) < 1e-9
+    # 1乗の式なら 1.0 × 0.1 ÷ 0.15 ≈ 0.667 になっていた。2乗の逆算は 0.1 × √(1 ÷ 0.15) ≈ 0.258
+    assert abs(rate - 0.1 * (1 / 0.15) ** 0.5) < 1e-9
