@@ -218,17 +218,26 @@ def test_simulation_updates_prior_demand_for_matching_condition(
 
     products_after_first = client.get("/api/products").json()
     updated = next(p for p in products_after_first if p["id"] == product_id)
-    assert updated["prior_demand"][key]["alpha"] == first_final_step["posterior_alpha"]
-    assert updated["prior_demand"][key]["beta"] == first_final_step["posterior_beta"]
+    # 古いデータを少しずつ忘れる（§5.15）：alpha・betaの両方に忘れる割合を掛けて書き戻す
+    # （平均＝予測そのものは変わらず、確信の強さだけが弱まる）
+    from services.simulation import FORGETTING_FACTOR
 
-    # 2回目は1回目終了時点の事後分布から始まる。betaは毎ステップ必ず増える（露出が積み上がる
-    # ため0にはならない）ので、2回目のstep0の時点で既に1回目の最終betaを上回っている
+    stored = updated["prior_demand"][key]
+    assert stored["alpha"] == first_final_step["posterior_alpha"] * FORGETTING_FACTOR
+    assert stored["beta"] == first_final_step["posterior_beta"] * FORGETTING_FACTOR
+    assert abs(
+        stored["alpha"] / stored["beta"]
+        - first_final_step["posterior_alpha"] / first_final_step["posterior_beta"]
+    ) < 1e-9
+
+    # 2回目は書き戻した事前分布から始まる。betaは毎ステップ必ず増える（露出が積み上がる）ので、
+    # 2回目のstep0の時点で既に書き戻したbetaを上回っている
     second = client.post("/api/simulations", json=VALID_BODY).json()
     second_first_step = min(
         (s for s in second["steps"] if s["product_id"] == product_id), key=lambda s: s["step"]
     )
-    assert second_first_step["posterior_alpha"] >= first_final_step["posterior_alpha"]
-    assert second_first_step["posterior_beta"] > first_final_step["posterior_beta"]
+    assert second_first_step["posterior_alpha"] >= stored["alpha"]
+    assert second_first_step["posterior_beta"] > stored["beta"]
 
 
 def test_simulation_does_not_change_other_conditions_prior(

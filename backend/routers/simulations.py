@@ -22,7 +22,7 @@ from models import (
     SimulationRun,
     StockAdjustmentLog,
 )
-from services.simulation import ProductInput, condition_key, run_simulation
+from services.simulation import ProductInput, carry_over, condition_key, run_simulation
 from services.stock_adjustment import compute_stock_adjustment
 
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
@@ -221,7 +221,9 @@ def create_simulation(
         if product is None:
             continue
         prior = json.loads(product.prior_demand)
-        prior[key] = {"alpha": f.final_alpha, "beta": f.final_beta}
+        # 古いデータを少しずつ忘れる（§5.15）：平均はそのまま、確信の強さを1割弱めて引き継ぐ
+        next_alpha, next_beta = carry_over(f.final_alpha, f.final_beta)
+        prior[key] = {"alpha": next_alpha, "beta": next_beta}
         product.prior_demand = json.dumps(prior, ensure_ascii=False)
 
         # 在庫の自動調整（docs/spec.md §5.7）：履歴全体の集計（/opportunities・/overstock）とは

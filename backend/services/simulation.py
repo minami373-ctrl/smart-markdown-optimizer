@@ -147,6 +147,18 @@ class ProductInput:
     true_rate: float | None = None
 
 
+#: 古いデータを少しずつ忘れる割合（docs/spec.md §5.15。2026-11-26追加）。営業の終わりの事後分布を
+#: 次の日の事前分布にするとき、alpha・betaの両方にこの値を掛ける。平均（予測そのもの）は変わらず、
+#: 確信の強さだけが毎日1割ずつ弱まる＝おおよそ直近10日分を重く見る。状況がゆっくり変わったときに
+#: 早く追いつくため（客層の変化など）。前もって分かる変化は長期休みの条件で、当日の変化は通知で扱う
+FORGETTING_FACTOR = 0.9
+
+
+def carry_over(alpha: float, beta: float) -> tuple[float, float]:
+    """営業の終わりの事後分布を、次の日の事前分布にする（学習の継続＋古いデータを忘れる。§5.15）。"""
+    return alpha * FORGETTING_FACTOR, beta * FORGETTING_FACTOR
+
+
 def _learn(alpha: float, beta: float, quantity: int, demanded: int, exposure: float) -> tuple[float, float]:
     """1ステップぶんのベイズ更新（ガンマ-ポアソン共役。docs/spec.md §5.2・§5.14）。
 

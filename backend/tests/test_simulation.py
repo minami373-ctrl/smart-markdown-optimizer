@@ -589,3 +589,37 @@ def test_learn_shrinks_exposure_when_the_step_sold_out() -> None:
     # このステップの露出1.5を超えないので1.5のまま。予測の平均が4.0なら露出は2÷4＝0.5に縮む
     assert _learn(2.0, 2.0, quantity=2, demanded=5, exposure=1.5) == (4.0, 3.5)
     assert _learn(8.0, 2.0, quantity=2, demanded=5, exposure=1.5) == (10.0, 2.5)
+
+
+# --- 古いデータを少しずつ忘れる（docs/spec.md §5.15。2026-11-26追加） ---
+
+
+def _learn_days(true_rates: list[float], forget: bool) -> float:
+    from services.simulation import carry_over
+
+    alpha, beta = 2.0, 2.0
+    for day, true_rate in enumerate(true_rates):
+        product = ProductInput(
+            product_id=1, name="x", initial_stock=80, elasticity=0.15,
+            prior_alpha=alpha, prior_beta=beta, true_rate=true_rate,
+        )
+        final = run_simulation([product], target_waste_rate=0.05, seed=900 + day).finals[0]
+        alpha, beta = (carry_over(final.final_alpha, final.final_beta) if forget
+                       else (final.final_alpha, final.final_beta))
+    return alpha / beta
+
+
+def test_carry_over_keeps_the_mean_and_weakens_confidence() -> None:
+    from services.simulation import FORGETTING_FACTOR, carry_over
+
+    a, b = carry_over(30.0, 20.0)
+    assert a / b == 30.0 / 20.0
+    assert b == 20.0 * FORGETTING_FACTOR
+
+
+def test_forgetting_catches_up_faster_when_demand_changes() -> None:
+    """客層が変わって本当の需要が1.0→0.6に下がったとき、古いデータを忘れる方が早く追いつく。"""
+    days = [1.0] * 15 + [0.6] * 5
+    with_forgetting = _learn_days(days, forget=True)
+    without = _learn_days(days, forget=False)
+    assert abs(with_forgetting - 0.6) < abs(without - 0.6)
