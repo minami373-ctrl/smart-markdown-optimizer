@@ -67,3 +67,31 @@ describe('buildStockChartData', () => {
     expect(result.series).toEqual([{ productId: 99, name: '商品99', data: [3] }])
   })
 })
+
+import { buildCategoryStockChartData } from './stockChartData'
+
+describe('buildCategoryStockChartData', () => {
+  it('種類ごとに残り在庫を合計する（12本の線を3本にまとめる）', () => {
+    const steps = [
+      { product_id: 1, step: 0, remaining_stock: 10 },
+      { product_id: 2, step: 0, remaining_stock: 5 },
+      { product_id: 3, step: 0, remaining_stock: 7 },
+      { product_id: 1, step: 1, remaining_stock: 8 },
+      { product_id: 2, step: 1, remaining_stock: 4 },
+      { product_id: 3, step: 1, remaining_stock: null },
+    ]
+    const products = [
+      { id: 1, category: '弁当・丼' },
+      { id: 2, category: '弁当・丼' },
+      { id: 3, category: '揚げ物の単品' },
+    ]
+
+    const { labels, series } = buildCategoryStockChartData(steps, products, 2)
+
+    expect(labels).toEqual([0, 1])
+    expect(series).toEqual([
+      { category: '弁当・丼', data: [15, 12] },
+      { category: '揚げ物の単品', data: [7, null] },
+    ])
+  })
+})

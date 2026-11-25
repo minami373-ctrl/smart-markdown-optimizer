@@ -633,3 +633,46 @@ details.model summary {
 .model-item span {
   font-size: 12px;
 }
+
+/* 2026-11-26 UIの仕上げ */
+.insight-banner {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  padding: 6px 24px;
+}
+
+.insight-banner-row,
+.insight-banner-row a {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.insight-banner-row a {
+  color: var(--accent);
+  margin-left: 6px;
+}
+
+.clock {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.phase {
+  font-size: 12px;
+  color: var(--sub);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+
+.field-group.batch {
+  flex-basis: 100%;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.field-group.batch .group-label {
+  font-weight: 400;
+}

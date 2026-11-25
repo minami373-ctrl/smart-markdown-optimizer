@@ -31,7 +31,7 @@ export default function InsightsBanner() {
     <div className="insight-banner">
       {messages.map((m) => (
         <div key={m.to} className="insight-banner-row">
-          {m.text} <Link to={m.to}>詳しく見る →</Link>
+          {m.text} <Link to={m.to}>詳しく見る</Link>
         </div>
       ))}
     </div>

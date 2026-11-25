@@ -14,13 +14,13 @@ export function buildInsightMessages(
   const messages: InsightMessage[] = []
   if (opportunityCount > 0) {
     messages.push({
-      text: `在庫不足の可能性がある商品が${opportunityCount}件あります。`,
+      text: `値引きなしで早く売り切れた商品が${opportunityCount}つあります（作る量を増やす候補）。`,
       to: '/opportunities',
     })
   }
   if (overstockCount > 0) {
     messages.push({
-      text: `過剰在庫の可能性がある商品が${overstockCount}件あります。`,
+      text: `値引きしても売れ残った商品が${overstockCount}つあります（作る量を減らす候補）。`,
       to: '/overstock',
     })
   }

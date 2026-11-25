@@ -10,7 +10,7 @@ describe('buildInsightMessages', () => {
     const result = buildInsightMessages(2, 0)
 
     expect(result).toEqual([
-      { text: '在庫不足の可能性がある商品が2件あります。', to: '/opportunities' },
+      { text: '値引きなしで早く売り切れた商品が2つあります（作る量を増やす候補）。', to: '/opportunities' },
     ])
   })
 
@@ -18,7 +18,7 @@ describe('buildInsightMessages', () => {
     const result = buildInsightMessages(0, 3)
 
     expect(result).toEqual([
-      { text: '過剰在庫の可能性がある商品が3件あります。', to: '/overstock' },
+      { text: '値引きしても売れ残った商品が3つあります（作る量を減らす候補）。', to: '/overstock' },
     ])
   })
 
@@ -26,8 +26,8 @@ describe('buildInsightMessages', () => {
     const result = buildInsightMessages(1, 5)
 
     expect(result).toEqual([
-      { text: '在庫不足の可能性がある商品が1件あります。', to: '/opportunities' },
-      { text: '過剰在庫の可能性がある商品が5件あります。', to: '/overstock' },
+      { text: '値引きなしで早く売り切れた商品が1つあります（作る量を増やす候補）。', to: '/opportunities' },
+      { text: '値引きしても売れ残った商品が5つあります（作る量を減らす候補）。', to: '/overstock' },
     ])
   })
 })

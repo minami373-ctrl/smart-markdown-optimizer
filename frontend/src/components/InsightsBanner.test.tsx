@@ -40,8 +40,8 @@ describe('InsightsBanner', () => {
 
     renderBanner()
 
-    expect(await screen.findByText('在庫不足の可能性がある商品が2件あります。')).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: '詳しく見る →' })
+    expect(await screen.findByText('値引きなしで早く売り切れた商品が2つあります（作る量を増やす候補）。')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: '詳しく見る' })
     expect(link).toHaveAttribute('href', '/opportunities')
   })
 
@@ -53,8 +53,8 @@ describe('InsightsBanner', () => {
 
     renderBanner()
 
-    expect(await screen.findByText('過剰在庫の可能性がある商品が1件あります。')).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: '詳しく見る →' })
+    expect(await screen.findByText('値引きしても売れ残った商品が1つあります（作る量を減らす候補）。')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: '詳しく見る' })
     expect(link).toHaveAttribute('href', '/overstock')
   })
 
@@ -68,9 +68,9 @@ describe('InsightsBanner', () => {
 
     renderBanner()
 
-    expect(await screen.findByText('在庫不足の可能性がある商品が1件あります。')).toBeInTheDocument()
-    expect(await screen.findByText('過剰在庫の可能性がある商品が1件あります。')).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: '詳しく見る →' })).toHaveLength(2)
+    expect(await screen.findByText('値引きなしで早く売り切れた商品が1つあります（作る量を増やす候補）。')).toBeInTheDocument()
+    expect(await screen.findByText('値引きしても売れ残った商品が1つあります（作る量を減らす候補）。')).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: '詳しく見る' })).toHaveLength(2)
   })
 
   it('機会損失の取得に失敗しても、過剰在庫の行は表示され続ける', async () => {
@@ -81,7 +81,7 @@ describe('InsightsBanner', () => {
 
     renderBanner()
 
-    expect(await screen.findByText('過剰在庫の可能性がある商品が1件あります。')).toBeInTheDocument()
+    expect(await screen.findByText('値引きしても売れ残った商品が1つあります（作る量を減らす候補）。')).toBeInTheDocument()
     expect(screen.queryByText(/在庫不足/)).not.toBeInTheDocument()
   })
 

@@ -52,3 +52,43 @@ export function buildStockChartData(
 
   return { labels, series }
 }
+
+export interface CategoryProduct {
+  id: number
+  category: string
+}
+
+/** 種類ごとの在庫推移の色（docs/spec.md §4①。2026-11-26） */
+export const CATEGORY_COLORS: Record<string, string> = {
+  '弁当・丼': '#b5651d',
+  '揚げ物の単品': '#1f5f99',
+  '軽食・つまみ': '#3a7d44',
+}
+
+/**
+ * 在庫推移を商品の種類ごとの合計にまとめる純関数（2026-11-26追加）。12本の線では読めないため、
+ * 「弁当・丼／揚げ物の単品／軽食・つまみ」の3本にする。種類の並びは`products`に出てくる順。
+ * あるステップでその種類の商品の在庫が1つも分からなければnull（線を途切れさせる）。
+ */
+export function buildCategoryStockChartData(
+  steps: StockChartStep[],
+  products: CategoryProduct[],
+  visibleStep: number,
+): { labels: number[]; series: { category: string; data: (number | null)[] }[] } {
+  const labels = Array.from({ length: visibleStep }, (_, i) => i)
+  const categoryOf = new Map(products.map((p) => [p.id, p.category]))
+  const categories = [...new Set(products.map((p) => p.category))]
+  const series = categories.map((category) => {
+    const totals = labels.map((step) => {
+      let total: number | null = null
+      for (const s of steps) {
+        if (s.step !== step || categoryOf.get(s.product_id) !== category) continue
+        if (s.remaining_stock == null) continue
+        total = (total ?? 0) + s.remaining_stock
+      }
+      return total
+    })
+    return { category, data: totals }
+  })
+  return { labels, series }
+}

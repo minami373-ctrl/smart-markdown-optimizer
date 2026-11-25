@@ -16,7 +16,8 @@ import { stepToClockTime } from '../lib/clock'
 import { conditionKey } from '../lib/conditionKey'
 import { buildLearningCurveData } from '../lib/learningCurveData'
 import { computeRevenue } from '../lib/revenue'
-import { buildStockChartData } from '../lib/stockChartData'
+import { CATEGORY_COLORS, buildCategoryStockChartData } from '../lib/stockChartData'
+import { dayPhase } from '../lib/dayPhase'
 import { chartAxisColors, useTheme } from '../lib/useTheme'
 import type { DayType, Product, SimulationDetail, StepOut, Weather } from '../api/types'
 import { discountLabel } from '../lib/discountLabel'
@@ -196,7 +197,10 @@ export default function SimulationPage() {
       <div className="page-head">
         <h1>今日の売り場</h1>
         {detail && totalSteps > 0 && (
-          <p className="clock-display">現在 {stepToClockTime(visibleStep, totalSteps)}</p>
+          <div className="clock">
+            <span className="phase">{dayPhase(visibleStep, totalSteps)}</span>
+            <p className="clock-display">現在 {stepToClockTime(visibleStep, totalSteps)}</p>
+          </div>
         )}
       </div>
 
@@ -294,6 +298,9 @@ export default function SimulationPage() {
           <button className="primary" onClick={handleStart} disabled={running || batchRunning}>
             {running ? '営業中…' : '営業開始'}
           </button>
+        </div>
+        <div className="field-group batch">
+          <span className="group-label">学習の様子を見る（同じ条件で何日分か続けて営業）</span>
           <label>
             連続実行（同条件で学習を進める）
             <input
@@ -321,7 +328,23 @@ export default function SimulationPage() {
         {error && <p className="error">{error}</p>}
       </section>
 
-      {!detail && <p className="empty">条件を設定して「営業開始」を押してください。</p>}
+      {!detail && (
+        <>
+          <p className="empty">条件を設定して「営業開始」を押してください。</p>
+          {products.length > 0 && (
+            <MonitorBoard
+              clock="開店前"
+              items={products.map((p) => ({
+                productId: p.id,
+                name: p.name,
+                unitPrice: p.unit_price,
+                appliedRate: 0,
+                remainingStock: p.initial_stock,
+              }))}
+            />
+          )}
+        </>
+      )}
 
       {detail && totalSteps > 0 && !finished && (
         <div className="floor">
@@ -427,7 +450,7 @@ export default function SimulationPage() {
         </section>
       )}
 
-      {detail && <StockChart detail={detail} visibleStep={visibleStep} />}
+      {detail && <StockChart detail={detail} products={products} visibleStep={visibleStep} />}
       {learningCurve.length > 0 && <LearningCurveChart runs={learningCurve} />}
 
       {detail && (
@@ -463,47 +486,57 @@ export default function SimulationPage() {
   )
 }
 
-/** 商品ごとの残り在庫数の推移を折れ線で描く（docs/spec.md §4①）。
- * `/history` の値引き率推移グラフ（RateChart）と同じ描画方式で、visibleStepまでを描画する。
- * 商品名は`RateChart`と同じく`detail.finals`（実行時点のスナップショット）から解決する。
- * 実行中に別画面で商品が削除されても、他のカードの表示（`finalResult`）と名前がずれない */
-function StockChart({ detail, visibleStep }: { detail: SimulationDetail; visibleStep: number }) {
+/** 在庫の推移を、商品の種類ごとの合計で折れ線に描く（docs/spec.md §4①。2026-11-26に12本→3本へ）。
+ * 「弁当・丼は半額でほぼ売れるが、揚げ物の単品は残る」という売り場の観察が線の形で見えるようにする。
+ * 凡例は自前で描き、legend/tooltipは無効化する（jsdomでのLine描画クラッシュを避けるため。
+ * SimulationPage.test.tsxのvi.mockコメント参照） */
+function StockChart({
+  detail,
+  products,
+  visibleStep,
+}: {
+  detail: SimulationDetail
+  products: Product[]
+  visibleStep: number
+}) {
   const theme = useTheme()
   const axisColors = chartAxisColors(theme)
-  const nameSource = detail.finals.map((f) => ({ id: f.product_id, name: f.product_name }))
-  const { labels, series } = buildStockChartData(detail.steps, nameSource, visibleStep)
+  const { labels, series } = buildCategoryStockChartData(detail.steps, products, visibleStep)
 
-  const datasets = series.map((s, i) => ({
-    label: s.name,
+  const datasets = series.map((s) => ({
+    label: s.category,
     data: s.data,
-    borderColor: COLORS[i % COLORS.length],
-    backgroundColor: COLORS[i % COLORS.length],
+    borderColor: CATEGORY_COLORS[s.category] ?? '#666',
+    backgroundColor: CATEGORY_COLORS[s.category] ?? '#666',
     tension: 0.1,
+    pointRadius: 0,
+    borderWidth: 2,
   }))
 
   return (
     <section className="panel">
       <h2>在庫推移</h2>
       <p className="chart-caption">
-        {/* responsive:trueのLegendプラグインはjsdomのcanvas未実装環境でリサイズ監視まわりの
-            例外を誘発する（SimulationPage.test.tsxのvi.mockコメント参照）ため使わず、
-            DistributionChartと同じくlegend/tooltipを無効化し、色の対応表を自前で出す */}
-        {series.map((s, i) => (
-          <span key={s.productId} style={{ color: COLORS[i % COLORS.length], marginRight: 12 }}>
-            ● {s.name}
+        種類ごとの残り在庫の合計。16時の補充で増え、18時以降の値引きで減っていきます。
+        {series.map((s) => (
+          <span key={s.category} style={{ color: CATEGORY_COLORS[s.category], marginLeft: 12 }}>
+            ━ {s.category}
           </span>
         ))}
       </p>
       <div className="stock-chart">
         <Line
-          data={{ labels, datasets }}
+          data={{ labels: labels.map((step) => stepToClockTime(step)), datasets }}
           options={{
             animation: false,
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false }, tooltip: { enabled: false } },
             scales: {
-              x: { ticks: { color: axisColors.tick }, grid: { color: axisColors.grid } },
+              x: {
+                ticks: { color: axisColors.tick, maxTicksLimit: 13 },
+                grid: { color: axisColors.grid },
+              },
               y: {
                 title: { display: true, text: '残り在庫数', color: axisColors.tick },
                 beginAtZero: true,
