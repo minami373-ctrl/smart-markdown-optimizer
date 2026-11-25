@@ -21,3 +21,12 @@ export function discountLabel(rate: number, unitPrice: number | null): string {
   if (unitPrice == null) return `ズバリ引き（${Math.round(rate * 100)}%引き）`
   return `ズバリ ¥${zubariPrice(unitPrice, rate)}`
 }
+
+/**
+ * 値引き後の売値（docs/spec.md §4①「売り場モニター」。components/MonitorBoard.tsx で使う）。30%引き・半額は1円単位で四捨五入、
+ * ズバリ引き（半額より大きい値引き）はzubariPriceと同じ10円単位の値段にする。
+ */
+export function monitorPrice(unitPrice: number, rate: number): number {
+  if (rate > 0.5) return zubariPrice(unitPrice, rate)
+  return Math.round(unitPrice * (1 - rate))
+}

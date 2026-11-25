@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import MonitorBoard, { monitorPrice } from './MonitorBoard'
+import MonitorBoard from './MonitorBoard'
+import { monitorPrice } from '../lib/discountLabel'
 
 describe('monitorPrice', () => {
   it('30%引き・半額は1円単位で四捨五入した売値', () => {

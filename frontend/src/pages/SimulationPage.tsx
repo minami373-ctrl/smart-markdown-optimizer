@@ -190,6 +190,14 @@ export default function SimulationPage() {
     return prior ? { alpha: prior.alpha, beta: prior.beta } : null
   }
 
+  /** その日に作った量。営業が終わると在庫の自動調整（§5.7）で商品の初期在庫が書き換わるため、
+   * 商品一覧の現在値ではなく、この回の最初のステップ（残り＋売れた数）から求める */
+  function dayStockFor(product: Product): number {
+    const first = detail?.steps.find((s) => s.product_id === product.id)
+    if (first?.remaining_stock != null) return first.remaining_stock + first.quantity
+    return product.initial_stock
+  }
+
   const finished = detail !== null && visibleStep >= totalSteps && totalSteps > 0
 
   return (
@@ -382,8 +390,8 @@ export default function SimulationPage() {
                     <tr key={p.id} className={pending ? 'row-pending' : undefined}>
                       <td>{p.name}</td>
                       <td className="num">
-                        {step?.remaining_stock ?? p.initial_stock}
-                        <span className="sub"> / {p.initial_stock}</span>
+                        {step?.remaining_stock ?? dayStockFor(p)}
+                        <span className="sub"> / {dayStockFor(p)}</span>
                       </td>
                       <td>{applied > 0 ? discountLabel(applied, p.unit_price) : '定価'}</td>
                       <td>

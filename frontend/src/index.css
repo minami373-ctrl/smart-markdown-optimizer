@@ -676,3 +676,41 @@ details.model summary {
 .field-group.batch .group-label {
   font-weight: 400;
 }
+
+.prior-details summary {
+  cursor: pointer;
+  color: var(--sub);
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+/* スマホ幅（2026-11-26）：メニューを折り返しても読めるように */
+@media (max-width: 640px) {
+  .nav {
+    padding: 10px 14px;
+  }
+  .brand-sub {
+    display: none;
+  }
+  .nav-analysis {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+  .nav-label {
+    border-left: none;
+    padding-left: 0;
+  }
+  main {
+    padding: 14px 12px 40px;
+  }
+  .page-head {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field-group.actions {
+    margin-left: 0;
+  }
+  .monitor-board ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

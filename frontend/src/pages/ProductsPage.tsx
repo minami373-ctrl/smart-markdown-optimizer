@@ -264,8 +264,8 @@ export default function ProductsPage() {
 
   return (
     <div>
-      <h1>商品設定</h1>
-      <p>商品の事前分布（天気・曜日・イベント別の基準需要）を確認・追加・編集・削除できます。</p>
+      <h1>商品</h1>
+      <p>売り場に並べる惣菜です。種類・1日に作る量・値段・値引きの効き方（値引き感度）を決めます。</p>
 
       <div className="card">
         <h2>商品を追加</h2>
@@ -311,26 +311,29 @@ export default function ProductsPage() {
             </h2>
           )}
           <StockAdjustmentHistory entries={adjustments[p.id] ?? []} />
-          <table>
-            <thead>
-              <tr>
-                <th>条件</th>
-                <th>alpha</th>
-                <th>beta</th>
-                <th>平均需要/step</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(p.prior_demand).map(([key, v]) => (
-                <tr key={key}>
-                  <td>{key.replace(/_/g, ' / ')}</td>
-                  <td>{v.alpha}</td>
-                  <td>{v.beta}</td>
-                  <td>{Math.round((v.alpha / v.beta) * 100) / 100}</td>
+          <details className="prior-details">
+            <summary>条件ごとの売れ方の予測（天気・曜日・イベント・長期休み）</summary>
+            <table>
+              <thead>
+                <tr>
+                  <th>条件</th>
+                  <th>alpha</th>
+                  <th>beta</th>
+                  <th>平均需要/step</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {Object.entries(p.prior_demand).map(([key, v]) => (
+                  <tr key={key}>
+                    <td>{key.replace(/_/g, ' / ')}</td>
+                    <td>{v.alpha}</td>
+                    <td>{v.beta}</td>
+                    <td>{Math.round((v.alpha / v.beta) * 100) / 100}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
         </div>
       ))}
     </div>

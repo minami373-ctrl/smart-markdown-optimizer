@@ -77,7 +77,7 @@ export default function TimingPage() {
   if (error) {
     return (
       <div>
-        <h1>値引きタイミングの傾向分析</h1>
+        <h1>値引きの時間帯</h1>
         <p className="error">{error}</p>
       </div>
     )
@@ -93,7 +93,7 @@ export default function TimingPage() {
 
   return (
     <div>
-      <h1>値引きタイミングの傾向分析</h1>
+      <h1>値引きの時間帯</h1>
       <p>
         過去のシミュレーション履歴から、天気・曜日・イベント有無の条件ごとに、値引きが平均
         何時ごろから必要になっているかを集計します。色が濃いほど値引きが早く必要になりがちな

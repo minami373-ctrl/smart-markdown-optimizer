@@ -159,7 +159,7 @@ export default function ComparisonPage() {
 
   return (
     <div>
-      <h1>固定スケジュール比較</h1>
+      <h1>固定時刻との比較</h1>
       <p>
         値引きのタイミングが「{stepToClockTime(result?.fixed_schedule_30_step ?? 30)}
         ＝3割引・{stepToClockTime(result?.fixed_schedule_50_step ?? 35)}

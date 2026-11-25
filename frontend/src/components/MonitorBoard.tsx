@@ -1,4 +1,4 @@
-import { discountLabel, zubariPrice } from '../lib/discountLabel'
+import { discountLabel, monitorPrice } from '../lib/discountLabel'
 
 export interface MonitorItem {
   productId: number
@@ -7,15 +7,6 @@ export interface MonitorItem {
   //: モニターに出ている（承認済みの）値引き率
   appliedRate: number
   remainingStock: number | null
-}
-
-/**
- * 値引き後の売値（docs/spec.md §4①「売り場モニター」）。30%引き・半額は1円単位で四捨五入、
- * ズバリ引き（半額より大きい値引き）はzubariPriceと同じ10円単位の値段にする。
- */
-export function monitorPrice(unitPrice: number, rate: number): number {
-  if (rate > 0.5) return zubariPrice(unitPrice, rate)
-  return Math.round(unitPrice * (1 - rate))
 }
 
 /**
