@@ -19,6 +19,7 @@ import { computeRevenue } from '../lib/revenue'
 import { buildStockChartData } from '../lib/stockChartData'
 import { chartAxisColors, useTheme } from '../lib/useTheme'
 import type { DayType, Product, SimulationDetail, StepOut, Weather } from '../api/types'
+import { discountLabel } from '../lib/discountLabel'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
@@ -282,7 +283,7 @@ export default function SimulationPage() {
               {!detail && <p>条件を設定して「営業開始」を押してください。</p>}
               {detail && !finished && (
                 <>
-                  <div className="rate">{Math.round((step?.recommended_rate ?? 0) * 100)}%引き</div>
+                  <div className="rate">{discountLabel(step?.recommended_rate ?? 0, p.unit_price)}</div>
                   <p>
                     残り {step?.remaining_stock ?? p.initial_stock} / {p.initial_stock}
                   </p>

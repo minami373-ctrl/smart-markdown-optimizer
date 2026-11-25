@@ -38,9 +38,17 @@ MAX_DISCOUNT = 0.75
 #: DISCOUNT_TIERS導入後は隣接する刻み同士の差（最小20pt）が必ずこれを上回るため、
 #: 実質「刻みが変わったかどうか」と同じ判定になっている（意図的な残置。壊れてはいない）
 MIN_RATE_CHANGE = 0.05
-#: 実店舗の値引きシールが「30%引き・半額・75%引き」の3段階しか無い、という
-#: この企画の出発点（docs/spec.md §1）に合わせた値引きの刻み（§5.3）
-DISCOUNT_TIERS: tuple[float, ...] = (0.0, 0.30, 0.50, MAX_DISCOUNT)
+#: 21時より前に使える値引きの刻み：30%引き・半額（docs/spec.md §5.3。2026-11-26改訂）
+PRE_ZUBARI_TIERS: tuple[float, ...] = (0.0, 0.30, 0.50)
+#: ズバリ引き（値段を直接決める値引き）が使えるようになる最初のステップ。営業時間10:00〜22:00・
+#: 40ステップ（1ステップ18分）で、21:00を過ぎた最初のステップ＝37（21:06）。
+#: このステップ以降に決まる値引きだけが半額より大きくなれる
+ZUBARI_START_STEP = 37
+#: ズバリ引きの刻み：半額より下を5%ずつ、下限は元の値段の75%引き（MAX_DISCOUNT）。
+#: 画面にはこの率から計算した10円単位の値段で表示する（frontend/src/lib/discountLabel.ts）
+ZUBARI_TIERS: tuple[float, ...] = (0.55, 0.60, 0.65, 0.70, MAX_DISCOUNT)
+#: 値引き率が取りうる値の全体（DiscountRecommendation.recommended_rateの値の範囲）
+DISCOUNT_TIERS: tuple[float, ...] = PRE_ZUBARI_TIERS + ZUBARI_TIERS
 #: 値引きを検討し始める閾値（docs/spec.md §5.3「トリガー：見込みではなく実際の遅れで判定する」）。
 #: 「実際に売れた個数」が「目標ペースで売れているべき個数（初期在庫の目標達成分×経過割合）」
 #: よりinitial_stockのこの割合以上少なければ値引き幅の計算に進む。2026-08-15追加。
@@ -160,18 +168,22 @@ def _required_discount_rate(
     return max(MIN_DISCOUNT, min(MAX_DISCOUNT, rate))
 
 
-def _snap_to_tier(rate: float) -> float:
-    """連続値の値引き率を、実店舗にある値引きの刻み（DISCOUNT_TIERS）のうち
-    その値以上で最小のものに切り上げる（docs/spec.md §5.3）。
+def _snap_to_tier(rate: float, allow_zubari: bool = True) -> float:
+    """連続値の値引き率を、使える値引きの刻みのうちその値以上で最小のものに
+    切り上げる（docs/spec.md §5.3）。
+
+    allow_zubari=False（21時より前。ZUBARI_START_STEP未満）のときは30%引き・半額の
+    2段階だけを使い、半額を超える値は半額に抑える（ズバリ引きは21時以降だけ）。
 
     切り下げではなく切り上げなのは、目標廃棄率を満たすのに必要な値引きが刻みの間の
     半端な値になったとき、切り下げると値引きが足りず目標未達になりやすいため
     （安全側＝売り切りやすい側に倒す）。rateが最大の刻みを超えていたら最大値に丸める。
     """
-    for tier in DISCOUNT_TIERS:
+    tiers = DISCOUNT_TIERS if allow_zubari else PRE_ZUBARI_TIERS
+    for tier in tiers:
         if rate <= tier:
             return tier
-    return DISCOUNT_TIERS[-1]
+    return tiers[-1]
 
 
 def run_simulation(
@@ -258,14 +270,19 @@ def run_simulation(
                     elasticity=p.elasticity,
                 )
             # 連続値のままでは提案しない。実店舗の値引きの刻みに丸める（docs/spec.md §5.3）
-            snapped_rate = _snap_to_tier(continuous_rate)
+            #    ズバリ引き（半額より大きい値引き）は21時を過ぎたステップ以降だけ（2026-11-26）
+            snapped_rate = _snap_to_tier(
+                continuous_rate, allow_zubari=step >= ZUBARI_START_STEP
+            )
             # 値引きシールは一度貼ったら剥がせない、という物理的な制約の再現：
             # 値引き率は一度上がったら下がらない（前のステップ以上にしかならない）
             candidate_rate = max(snapped_rate, state["last_recommended"])
 
             # candidate_rate は必ず last_recommended 以上（値引きは下げないため）。
             # 差は常に非負なので abs() は不要
-            is_new = candidate_rate - state["last_recommended"] >= MIN_RATE_CHANGE
+            #    ズバリ引きの刻みは5%幅なので、浮動小数点の誤差（0.60-0.55=0.0499…）で
+            #    変化を見落とさないよう、差を丸めてから比べる
+            is_new = round(candidate_rate - state["last_recommended"], 6) >= MIN_RATE_CHANGE
             if is_new:
                 state["last_recommended"] = candidate_rate
             state["discount"] = state["last_recommended"]

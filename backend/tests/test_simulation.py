@@ -51,9 +51,9 @@ def test_discount_multiplier_grows_faster_than_linear() -> None:
     assert m50 - m30 < m75 - m50, "値引き率が上がるほど、効きの増分が大きくなっていない"
 
 
-def test_discount_tiers_are_0_30_50_75() -> None:
+def test_discount_tiers_are_30_half_and_zubari() -> None:
     """docs/spec.md §5.3：実店舗の値引きシールに合わせた4段階。"""
-    assert DISCOUNT_TIERS == (0.0, 0.30, 0.50, 0.75)
+    assert DISCOUNT_TIERS == (0.0, 0.30, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75)
     assert DISCOUNT_TIERS[-1] == MAX_DISCOUNT
 
 
@@ -365,3 +365,38 @@ def test_recommended_rate_stays_at_max_once_reached() -> None:
     assert MAX_DISCOUNT in rates_in_order, "このテストの前提（最大値引きに到達する）が崩れている"
     first_max_index = rates_in_order.index(MAX_DISCOUNT)
     assert all(r == MAX_DISCOUNT for r in rates_in_order[first_max_index:])
+
+
+# --- ズバリ引き（docs/spec.md §5.3。2026-11-26追加） ---
+
+
+def test_snap_to_tier_before_21_caps_at_half() -> None:
+    """21時より前（allow_zubari=False）は30%引き・半額の2段階だけ。半額を超える値は半額に抑える。"""
+    assert _snap_to_tier(0.42, allow_zubari=False) == 0.50
+    assert _snap_to_tier(0.62, allow_zubari=False) == 0.50
+    assert _snap_to_tier(0.9, allow_zubari=False) == 0.50
+
+
+def test_snap_to_tier_after_21_uses_5_percent_zubari_steps() -> None:
+    assert _snap_to_tier(0.52) == 0.55
+    assert _snap_to_tier(0.61) == 0.65
+    assert _snap_to_tier(0.9) == MAX_DISCOUNT
+
+
+def test_zubari_discount_only_appears_from_step_37() -> None:
+    """半額より大きい値引き（ズバリ引き）は、21時を過ぎたステップ（37）以降にしか出ない。
+    需要が非常に低い商品（ふつうなら早くから最大値引きになる）でも、37より前は半額で止まる。"""
+    from services.simulation import ZUBARI_START_STEP
+
+    product = make_product(stock=100, alpha=0.5, beta=2.0)
+    reached_zubari = 0
+    for seed in range(5):
+        outcome = run_simulation([product], target_waste_rate=0.0, seed=seed)
+        for s in outcome.steps:
+            if s.step < ZUBARI_START_STEP:
+                assert s.recommended_rate <= 0.50, f"seed={seed} step={s.step}: {s.recommended_rate}"
+        if max(s.recommended_rate for s in outcome.steps) > 0.50:
+            reached_zubari += 1
+    # 売れ行きがよい乱数では半額のままで間に合うこともある（それは正しい動き）。
+    # テストの前提として、少なくとも1つのseedでは21時以降にズバリ引きへ進むことを確認する
+    assert reached_zubari >= 1

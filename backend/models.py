@@ -60,7 +60,7 @@ class DiscountRecommendation(SQLModel, table=True):
     run_id: int = Field(foreign_key="simulationrun.id")
     product_id: int = Field(foreign_key="product.id")
     step: int
-    recommended_rate: float  # 0.0 / 0.30 / 0.50 / 0.75 のいずれか（services/simulation.py の DISCOUNT_TIERS）
+    recommended_rate: float  # services/simulation.py の DISCOUNT_TIERS のいずれか（0/30%/半額、21時以降は55〜75%のズバリ引き）
     posterior_mean: float  # このときの事後分布の期待残数
 
 

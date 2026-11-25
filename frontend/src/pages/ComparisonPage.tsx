@@ -156,9 +156,9 @@ export default function ComparisonPage() {
     <div>
       <h1>固定スケジュール比較</h1>
       <p>
-        値引きのタイミングが「{stepToClockTime(result?.fixed_schedule_30_step ?? 33)}
-        ごろ＝3割引・{stepToClockTime(result?.fixed_schedule_50_step ?? 38)}
-        ごろ＝半額」のように固定化された従来のやり方と、今の動的値引きを、同じ条件・
+        値引きのタイミングが「{stepToClockTime(result?.fixed_schedule_30_step ?? 30)}
+        ＝3割引・{stepToClockTime(result?.fixed_schedule_50_step ?? 35)}
+        ＝半額・21時過ぎ＝ズバリ引き」のように固定化された従来のやり方と、今の動的値引きを、同じ条件・
         同じ乱数（＝同じ客の来店パターン）で比較します。DBには保存されません。
       </p>
 

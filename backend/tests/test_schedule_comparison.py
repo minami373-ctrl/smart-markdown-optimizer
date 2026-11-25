@@ -35,8 +35,12 @@ def test_fixed_schedule_rate_is_30_percent_between_thresholds() -> None:
 
 
 def test_fixed_schedule_rate_is_half_after_second_threshold() -> None:
+    from services.schedule_comparison import FIXED_SCHEDULE_ZUBARI_STEP
+
     assert _fixed_schedule_rate(FIXED_SCHEDULE_50_STEP) == 0.50
-    assert _fixed_schedule_rate(STEPS - 1) == 0.50
+    # 21時を過ぎるとズバリ引き（2026-11-26追加）になるので、半額はその手前まで
+    assert _fixed_schedule_rate(FIXED_SCHEDULE_ZUBARI_STEP - 1) == 0.50
+    assert _fixed_schedule_rate(STEPS - 1) == 0.75
 
 
 def test_fixed_schedule_never_decreases() -> None:
@@ -106,3 +110,12 @@ def test_dynamic_and_fixed_schedule_share_the_same_starting_random_stream() -> N
     # ステップ30（固定スケジュールが最初に動くステップ）より前は、動的値引き側も
     # 値引きしていない前提（高需要のため）なので、両者の購入個数は完全に一致するはず
     assert dynamic_quantities[:FIXED_SCHEDULE_30_STEP] == fixed_quantities[:FIXED_SCHEDULE_30_STEP]
+
+
+def test_fixed_schedule_goes_to_zubari_floor_after_21() -> None:
+    """実際の売り場の手順どおり、21時を過ぎたら固定スケジュール側もズバリ引き（下限75%引き）。"""
+    from services.schedule_comparison import FIXED_SCHEDULE_ZUBARI_STEP
+
+    assert FIXED_SCHEDULE_ZUBARI_STEP == 37
+    assert _fixed_schedule_rate(FIXED_SCHEDULE_ZUBARI_STEP - 1) == 0.50
+    assert _fixed_schedule_rate(FIXED_SCHEDULE_ZUBARI_STEP) == 0.75

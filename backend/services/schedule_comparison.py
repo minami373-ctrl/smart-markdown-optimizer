@@ -13,7 +13,14 @@ services.simulationの_sample_poisson・discount_multiplierをそのまま使い
 import random
 from dataclasses import dataclass, field
 
-from services.simulation import STEPS, ProductInput, _sample_poisson, discount_multiplier
+from services.simulation import (
+    MAX_DISCOUNT,
+    STEPS,
+    ZUBARI_START_STEP,
+    ProductInput,
+    _sample_poisson,
+    discount_multiplier,
+)
 
 #: 固定スケジュールの値引きタイミング。frontend/src/lib/clock.tsのstepToClockTime
 #: （営業時間10:00〜22:00・40ステップの換算。2026-11-26改訂）を逆算した値（docs/spec.md §5.9）：
@@ -21,13 +28,19 @@ from services.simulation import STEPS, ProductInput, _sample_poisson, discount_m
 #: 20:30 → (20:30-10:00)/(22:00-10:00)*40 = 630/720*40 = 35
 FIXED_SCHEDULE_30_STEP = 30
 FIXED_SCHEDULE_50_STEP = 35
+#: 21時のズバリ引き（実際の売り場の手順。2026-11-26追加）。固定スケジュール側は売れ行きを見ないので、
+#: 21時を過ぎたら下限（元の値段の75%引き）まで一気に下げる
+FIXED_SCHEDULE_ZUBARI_STEP = ZUBARI_START_STEP
 
 
 def _fixed_schedule_rate(step: int) -> float:
-    """固定スケジュールの値引き率。19時相当のステップで30%、20時半相当のステップで半額。
+    """固定スケジュールの値引き率。19時相当のステップで30%、20時半相当のステップで半額、
+    21時を過ぎたステップでズバリ引き（下限の75%引き）。
     時刻だけで機械的に決まり、事後分布や実際の遅れといった判断は一切使わない
     （これが動的値引きとの対比で示したい固定スケジュールの特徴そのもの）。
     """
+    if step >= FIXED_SCHEDULE_ZUBARI_STEP:
+        return MAX_DISCOUNT
     if step >= FIXED_SCHEDULE_50_STEP:
         return 0.50
     if step >= FIXED_SCHEDULE_30_STEP:
