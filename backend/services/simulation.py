@@ -50,6 +50,9 @@ ZUBARI_START_STEP = 37
 ZUBARI_TIERS: tuple[float, ...] = (0.55, 0.60, 0.65, 0.70, MAX_DISCOUNT)
 #: 半額。これより大きい値引き（ズバリ引き）だけがナイトマネージャーの承認待ちになる（§5.11）
 HALF_PRICE_RATE = 0.50
+#: 30%引きを最低何ステップ続けてから半額に上げるか（docs/spec.md §5.3。2026-11-26追加）。
+#: 3ステップ＝54分。実際の売り場は19時に30%引き・20時半に半額で、30%引きで売れる時間がある
+MIN_STEPS_AT_30 = 3
 #: 値引き率が取りうる値の全体（DiscountRecommendation.recommended_rateの値の範囲）
 DISCOUNT_TIERS: tuple[float, ...] = PRE_ZUBARI_TIERS + ZUBARI_TIERS
 #: 値引きを検討し始める閾値（docs/spec.md §5.3「トリガー：見込みではなく実際の遅れで判定する」）。
@@ -307,6 +310,8 @@ def run_simulation(
             # モニターに出ている値引き率（承認済み）と、承認待ちのズバリ引き（率, 承認されるステップ）
             "applied": 0.0,
             "pending": None,
+            # 最後に値引きを上げたステップ（30%引きを続けた長さを数えるため）
+            "raised_at": -1,
             # 商品ごとに独立した乱数列（他商品の有無・順序に依存しない）
             "rng": random.Random(f"{seed}-{p.product_id}"),
         }
@@ -395,6 +400,18 @@ def run_simulation(
             # 値引きシールは一度貼ったら剥がせない、という物理的な制約の再現：
             # 値引き率は一度上がったら下がらない（前のステップ以上にしかならない）
             candidate_rate = max(snapped_rate, state["last_recommended"])
+            # 段階を飛ばさない（2026-11-26追加。§5.3）：半額までは「値引きなし→30%引き→半額」を
+            # 1段ずつ上げ、30%引きは最低MIN_STEPS_AT_30ステップ続ける。ブラウザで確認したところ、
+            # 18時台にいきなり半額になる商品が多く、実際の売り場の流れと合わなかったため。
+            # 半額からズバリ引き（21時以降）は残り時間が少ないので、必要な刻みまで一度に上げてよい
+            current = state["last_recommended"]
+            if candidate_rate > current and current < HALF_PRICE_RATE:
+                if current == 0.0:
+                    candidate_rate = 0.30
+                elif step - state["raised_at"] < MIN_STEPS_AT_30:
+                    candidate_rate = current
+                else:
+                    candidate_rate = HALF_PRICE_RATE
 
             # candidate_rate は必ず last_recommended 以上（値引きは下げないため）。
             # 差は常に非負なので abs() は不要
@@ -403,6 +420,7 @@ def run_simulation(
             is_new = round(candidate_rate - state["last_recommended"], 6) >= MIN_RATE_CHANGE
             if is_new:
                 state["last_recommended"] = candidate_rate
+                state["raised_at"] = step
                 if candidate_rate > HALF_PRICE_RATE:
                     # ズバリ引きはナイトマネージャーの承認待ち（docs/spec.md §5.11）。
                     # 新しいズバリ引きが出たら、承認待ちをその提案に置き換える

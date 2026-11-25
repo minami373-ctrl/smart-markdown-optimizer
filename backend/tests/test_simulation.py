@@ -516,3 +516,20 @@ def test_no_discount_is_decided_before_18() -> None:
         for s in outcome.steps:
             if s.step < EARLIEST_DISCOUNT_STEP:
                 assert s.recommended_rate == 0.0, f"seed={seed} step={s.step}"
+
+
+def test_discount_never_skips_30_percent_and_holds_it_for_3_steps() -> None:
+    """段階を飛ばさない（docs/spec.md §5.3。2026-11-26）：半額の前に必ず30%引きがあり、
+    30%引きは最低MIN_STEPS_AT_30ステップ続く。"""
+    from services.simulation import MIN_STEPS_AT_30
+
+    for seed in range(10):
+        outcome = run_simulation(_low_demand_products(), target_waste_rate=0.0, seed=seed)
+        for pid in (1, 2, 3):
+            steps = sorted((s for s in outcome.steps if s.product_id == pid), key=lambda s: s.step)
+            first_30 = next((s.step for s in steps if s.recommended_rate == 0.30), None)
+            first_half = next((s.step for s in steps if s.recommended_rate >= 0.50), None)
+            if first_half is None:
+                continue
+            assert first_30 is not None, f"seed={seed} pid={pid}: 30%引きを飛ばして半額になった"
+            assert first_half - first_30 >= MIN_STEPS_AT_30
