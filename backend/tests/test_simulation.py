@@ -471,3 +471,48 @@ def test_approval_delay_never_lowers_what_is_on_the_monitor() -> None:
         for pid in (1, 2, 3):
             applied = [s.applied_rate for s in sorted(outcome.steps, key=lambda s: s.step) if s.product_id == pid]
             assert applied == sorted(applied)
+
+
+# --- 1日の売れ方・16時の補充（docs/spec.md §5.12。2026-11-26追加） ---
+
+
+def test_demand_curve_has_mean_one_and_peaks_at_noon() -> None:
+    from services.simulation import demand_curve
+
+    curve = demand_curve(40)
+    assert abs(sum(curve) / len(curve) - 1.0) < 1e-9
+    # 12:00〜13:00（ステップ7〜9）が一番の山、17時台が2番目の山
+    assert curve.index(max(curve)) in (7, 8, 9)
+    assert max(curve[23:27]) > curve[15]  # 17時台 > 15時台
+
+
+def test_split_stock_puts_half_in_the_morning_rounding_up() -> None:
+    from services.simulation import split_stock
+
+    assert split_stock(20) == (10, 10)
+    assert split_stock(15) == (8, 7)
+    assert split_stock(1) == (1, 0)
+
+
+def test_morning_sales_never_exceed_the_morning_stock() -> None:
+    """16時の補充（ステップ20）より前は、朝に並べた分しか売れない。"""
+    from services.simulation import RESTOCK_STEP, split_stock
+
+    product = make_product(stock=20, alpha=20.0, beta=2.0)  # 需要がとても高い＝昼に売り切れる
+    outcome = run_simulation([product], target_waste_rate=0.0, seed=1)
+    morning_sold = sum(s.quantity for s in outcome.steps if s.step < RESTOCK_STEP)
+    assert morning_sold <= split_stock(20)[0]
+    # 補充後はまた売れる
+    assert sum(s.quantity for s in outcome.steps if s.step >= RESTOCK_STEP) > 0
+
+
+def test_no_discount_is_decided_before_18() -> None:
+    """昼に値引きは無く、17時台の夕方の山も定価で売る。値引きの判断は18時（ステップ27）から。"""
+    from services.simulation import EARLIEST_DISCOUNT_STEP
+
+    assert EARLIEST_DISCOUNT_STEP == 27
+    for seed in range(5):
+        outcome = run_simulation(_low_demand_products(), target_waste_rate=0.0, seed=seed)
+        for s in outcome.steps:
+            if s.step < EARLIEST_DISCOUNT_STEP:
+                assert s.recommended_rate == 0.0, f"seed={seed} step={s.step}"

@@ -128,6 +128,8 @@ export default function ComparisonPage() {
   const [dayType, setDayType] = useState<DayType>('平日')
   const [hasEvent, setHasEvent] = useState(false)
   const [targetWasteRate, setTargetWasteRate] = useState(0.03)
+  //: 「お客さんが待つ」効果（docs/spec.md §5.12。売り場での観察にもとづく仮定なので切り替えられる）
+  const [customerAnticipation, setCustomerAnticipation] = useState(false)
 
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,6 +145,7 @@ export default function ComparisonPage() {
         day_type: dayType,
         has_event: hasEvent,
         target_waste_rate: targetWasteRate,
+        customer_anticipation: customerAnticipation,
       })
       setResult(res)
     } catch (e) {
@@ -193,6 +196,15 @@ export default function ComparisonPage() {
               type="checkbox"
               checked={hasEvent}
               onChange={(e) => setHasEvent(e.target.checked)}
+              disabled={running}
+            />
+          </label>
+          <label title="値引きの時刻が毎日同じだと、お客さんが覚えて待つ（18時台は買い控え、30%引きの間も半額を待つ）。売り場での観察にもとづく仮定">
+            お客さんが値引きの時刻を覚えて待つ（仮定・固定スケジュール側のみ）
+            <input
+              type="checkbox"
+              checked={customerAnticipation}
+              onChange={(e) => setCustomerAnticipation(e.target.checked)}
               disabled={running}
             />
           </label>

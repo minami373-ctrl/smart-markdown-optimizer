@@ -119,3 +119,23 @@ def test_fixed_schedule_goes_to_zubari_floor_after_21() -> None:
     assert FIXED_SCHEDULE_ZUBARI_STEP == 37
     assert _fixed_schedule_rate(FIXED_SCHEDULE_ZUBARI_STEP - 1) == 0.50
     assert _fixed_schedule_rate(FIXED_SCHEDULE_ZUBARI_STEP) == 0.75
+
+
+def test_customer_anticipation_lowers_fixed_schedule_sales_only_around_the_known_times() -> None:
+    """「お客さんが待つ」効果（§5.12。仮定）を入れると、18時台と30%引きの間だけ売れにくくなる。
+    それより前（昼・夕方の山）の売れ方は変わらない。"""
+    from services.schedule_comparison import ANTICIPATION_START_STEP
+
+    product = ProductInput(
+        product_id=1, name="x", initial_stock=200, elasticity=0.15, prior_alpha=10.0, prior_beta=2.0
+    )
+    total_without = total_with = 0
+    for seed in range(10):
+        without = run_fixed_schedule_simulation(product, seed=seed)
+        with_ = run_fixed_schedule_simulation(product, seed=seed, customer_anticipation=True)
+        before = [s.quantity for s in without.steps if s.step < ANTICIPATION_START_STEP]
+        assert before == [s.quantity for s in with_.steps if s.step < ANTICIPATION_START_STEP]
+        window = range(ANTICIPATION_START_STEP, FIXED_SCHEDULE_50_STEP)
+        total_without += sum(s.quantity for s in without.steps if s.step in window)
+        total_with += sum(s.quantity for s in with_.steps if s.step in window)
+    assert total_with < total_without

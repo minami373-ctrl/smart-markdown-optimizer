@@ -59,6 +59,57 @@ DISCOUNT_TIERS: tuple[float, ...] = PRE_ZUBARI_TIERS + ZUBARI_TIERS
 #: このマージンだけで序盤の過敏な反応も抑えられる（旧GRACE_PERIOD_STEPSの役割を吸収した）
 SHORTFALL_MARGIN_RATE = 0.15
 
+#: 1日の売れ方（docs/spec.md §5.12。2026-11-26追加）。売り場の聞き取りをもとにした、時間帯ごとの
+#: 需要の重み（値は相対値。demand_curveで1ステップあたり平均1.0になるよう正規化する）。
+#: 12時が一番の山、16時に補充、17時は12時より少ないが定価で売れる、19時以降は値引きで売る時間帯。
+#: (その時間帯が終わる時刻[分], 重み)
+_HOURLY_WEIGHTS: tuple[tuple[int, float], ...] = (
+    (11 * 60, 0.6),  # 10:00〜11:00
+    (12 * 60, 1.2),  # 11:00〜12:00
+    (13 * 60, 2.0),  # 12:00〜13:00（昼の山）
+    (16 * 60, 0.6),  # 13:00〜16:00
+    (17 * 60, 0.9),  # 16:00〜17:00（補充）
+    (18 * 60, 1.4),  # 17:00〜18:00（夕方の山）
+    (19 * 60, 1.2),  # 18:00〜19:00
+    (22 * 60, 0.8),  # 19:00〜22:00
+)
+BUSINESS_START_MINUTES = 10 * 60
+BUSINESS_END_MINUTES = 22 * 60
+#: 16時の補充（docs/spec.md §5.12）。16:00 = (16:00-10:00)/(22:00-10:00)*40 = ステップ20。
+#: このステップの販売の前に補充分が並ぶ。値引きの判定もこのステップから始める（昼の値引きは無い）
+RESTOCK_STEP = 20
+#: 1日の在庫（Product.initial_stock）のうち朝に並べる割合。残りを16時に補充する。
+#: 実際の割合は分からないため、いったん半分ずつにしている（本人と決定）
+MORNING_STOCK_RATIO = 0.5
+#: 値引きの判断を始める最初のステップ（§5.12）。17時台は夕方の山で定価で売れる（売り場の聞き取り）
+#: ため、18時を過ぎた最初のステップ（27＝18:06）から判断する。夜の在庫は1商品あたり十数個と少なく、
+#: 1〜2個の偶然の遅れで17時台に値引きしてしまうのを防ぐ
+EARLIEST_DISCOUNT_STEP = 27
+
+
+def demand_curve(steps: int = STEPS) -> list[float]:
+    """各ステップの需要の重み（平均1.0）。ステップの開始時刻が入る時間帯の重みを使う。"""
+    if steps <= 0:
+        return []
+    minutes_per_step = (BUSINESS_END_MINUTES - BUSINESS_START_MINUTES) / steps
+    raw: list[float] = []
+    for step in range(steps):
+        minute = BUSINESS_START_MINUTES + minutes_per_step * step
+        weight = _HOURLY_WEIGHTS[-1][1]
+        for end, w in _HOURLY_WEIGHTS:
+            if minute < end:
+                weight = w
+                break
+        raw.append(weight)
+    mean = sum(raw) / len(raw)
+    return [w / mean for w in raw]
+
+
+def split_stock(initial_stock: int) -> tuple[int, int]:
+    """1日の在庫を(朝に並べる分, 16時に補充する分)に分ける。朝の分は切り上げ。"""
+    morning = initial_stock - int(initial_stock * (1 - MORNING_STOCK_RATIO))
+    return morning, initial_stock - morning
+
 
 def condition_key(weather: str, day_type: str, has_event: bool) -> str:
     return f"{weather}_{day_type}_{'あり' if has_event else 'なし'}"
@@ -124,6 +175,7 @@ def _is_behind_pace(
     target_waste_stock: float,
     elapsed_steps: int,
     total_steps: int,
+    elapsed_fraction: float | None = None,
 ) -> bool:
     """「実際に売れた個数」が「目標ペースで売れているべき個数」より
     `SHORTFALL_MARGIN_RATE`ぶん以上少なければTrue（docs/spec.md §5.3「トリガー」）。
@@ -132,13 +184,17 @@ def _is_behind_pace(
     （initial_stock - target_waste_stock）を、開店から閉店まで一定のペースで売ると
     仮定して経過ステップの割合ぶんだけ直線的に案分した値。事後分布などの統計的な見込みは
     一切使わず、その回で実際に生成された購入ログの数（actual_sold）だけを見る。
+
+    elapsed_fractionを渡すと、経過ステップの割合の代わりにそれを使う（2026-11-26追加。
+    1日の売れ方〔demand_curve〕に沿った目標ペース。docs/spec.md §5.12）。
     """
     if total_steps <= 0:
         return False
     units_to_sell_total = initial_stock - target_waste_stock
     if units_to_sell_total <= 0:
         return False
-    expected_sold_by_now = units_to_sell_total * (elapsed_steps / total_steps)
+    fraction = elapsed_steps / total_steps if elapsed_fraction is None else elapsed_fraction
+    expected_sold_by_now = units_to_sell_total * fraction
     shortfall = expected_sold_by_now - actual_sold
     margin = initial_stock * SHORTFALL_MARGIN_RATE
     return shortfall > margin
@@ -146,12 +202,16 @@ def _is_behind_pace(
 
 def _required_discount_rate(
     remaining_stock: int,
-    remaining_steps: int,
+    remaining_steps: float,
     target_waste_stock: float,
     baseline_rate: float,
     elasticity: float,
 ) -> float:
-    """残り時間で目標廃棄率以内に売り切るために必要な値引き率を計算する。"""
+    """残り時間で目標廃棄率以内に売り切るために必要な値引き率を計算する。
+
+    remaining_stepsは「残り時間の長さ」。1日の売れ方（docs/spec.md §5.12）を入れてからは、
+    残りステップの需要の重みの合計（売れやすい時間帯ほど長く数える）を渡す。
+    """
     if remaining_steps <= 0 or remaining_stock <= 0:
         return 0.0
 
@@ -218,11 +278,25 @@ def run_simulation(
     # 初期在庫0の商品は購入ログ生成をスキップする（0除算を避ける。docs/spec.md §5.2）
     active_products = [p for p in products if p.initial_stock > 0]
 
+    curve = demand_curve(steps)
+    # その時点までの需要の重みの累積割合（目標ペースの計算に使う。§5.12）
+    # 夜（16時の補充以降）の需要の重みの累積割合。値引きの判定は、補充した時点の在庫
+    # （昼の売れ残り＋補充分）を、夜の売れ方に沿って売り切れているかで見る（§5.12）
+    evening_weight = sum(curve[RESTOCK_STEP:]) if steps > RESTOCK_STEP else 0.0
+    evening_cumulative = {
+        i: sum(curve[RESTOCK_STEP : i + 1]) / evening_weight
+        for i in range(RESTOCK_STEP, steps)
+    } if evening_weight > 0 else {}
+
     states = {
         p.product_id: {
             "alpha": p.prior_alpha,
             "beta": p.prior_beta,
-            "remaining": p.initial_stock,
+            # 店頭の在庫（朝の分）と、16時に補充する分（docs/spec.md §5.12）
+            "remaining": split_stock(p.initial_stock)[0],
+            "restock": split_stock(p.initial_stock)[1],
+            # 16時の補充直後の在庫（夜の値引き判定の基準。補充するまではNone）
+            "evening_stock": None,
             "discount": 0.0,
             "last_recommended": 0.0,
             # モニターに出ている値引き率（承認済み）と、承認待ちのズバリ引き（率, 承認されるステップ）
@@ -236,8 +310,15 @@ def run_simulation(
 
     for step in range(steps):
         remaining_steps = steps - step
+        weight = curve[step]
         for p in active_products:
             state = states[p.product_id]
+
+            # 0) 16時の補充（§5.12）。昼の売れ残りと補充分を合わせて夜まで売る
+            if step == RESTOCK_STEP:
+                state["remaining"] += state["restock"]
+                state["restock"] = 0
+                state["evening_stock"] = state["remaining"]
 
             # 1)〜2) 在庫が残っているステップだけ購入を生成しベイズ更新する。
             #    在庫が0（完売済み）のステップは「これ以上売れたかどうか」を観測できない
@@ -251,14 +332,17 @@ def run_simulation(
                 # （値引き率の計算に使う updated_mean と同じ考え方。§5.3参照）
                 demand_rate = state["alpha"] / state["beta"]
                 multiplier = discount_multiplier(state["discount"], p.elasticity)
-                true_rate = demand_rate * multiplier
+                # その時間帯の売れやすさ（§5.12）も値引きと同じく「既知の露出」として掛ける
+                exposure = weight * multiplier
+                true_rate = demand_rate * exposure
                 quantity = _sample_poisson(state["rng"], true_rate)
                 quantity = min(quantity, state["remaining"])
                 state["remaining"] -= quantity
 
-                # ベイズ更新（値引きによる需要倍率を「既知の露出」として扱う）
+                # ベイズ更新（値引きによる需要倍率と時間帯の重みを「既知の露出」として扱う。
+                # 露出が変わってもガンマ-ポアソン共役のまま：alpha += 個数、beta += 露出）
                 state["alpha"] += quantity
-                state["beta"] += multiplier
+                state["beta"] += exposure
             else:
                 quantity = 0
 
@@ -267,22 +351,33 @@ def run_simulation(
             #    見込みを使わない、実績ベース）。値引き幅の計算だけ事後分布の平均を使う
             updated_mean = state["alpha"] / state["beta"]
             target_waste_stock = target_waste_rate * p.initial_stock
-            actual_sold = p.initial_stock - state["remaining"]
-            behind_pace = _is_behind_pace(
-                actual_sold=actual_sold,
-                initial_stock=p.initial_stock,
-                target_waste_stock=target_waste_stock,
-                elapsed_steps=step + 1,
-                total_steps=steps,
+            # 1日の残り＝店頭在庫＋まだ補充していない分
+            day_remaining = state["remaining"] + state["restock"]
+            remaining_exposure = sum(curve[step + 1 :])
+            evening_stock = state["evening_stock"]
+            behind_pace = (
+                step >= EARLIEST_DISCOUNT_STEP
+                and evening_stock is not None
+                and evening_stock > 0
+                and _is_behind_pace(
+                    actual_sold=evening_stock - day_remaining,
+                    initial_stock=evening_stock,
+                    target_waste_stock=target_waste_stock,
+                    elapsed_steps=step + 1,
+                    total_steps=steps,
+                    elapsed_fraction=evening_cumulative[step],
+                )
             )
             if not behind_pace:
+                # 16時の補充より前は値引きしない（昼に値引きは絶対に無い。§5.12）。
+                # 補充後も、1日の売れ方に沿った目標ペースの範囲内なら値引きしない
                 # まだ目標ペースの範囲内（またはマージン内の軽微な遅れ）なので、
                 # 値引き幅の計算そのものを行わない（見込みで先回りしない）
                 continuous_rate = 0.0
             else:
                 continuous_rate = _required_discount_rate(
-                    remaining_stock=state["remaining"],
-                    remaining_steps=remaining_steps - 1,
+                    remaining_stock=day_remaining,
+                    remaining_steps=remaining_exposure,
                     target_waste_stock=target_waste_stock,
                     baseline_rate=updated_mean,
                     elasticity=p.elasticity,
@@ -318,16 +413,16 @@ def run_simulation(
 
             # 画面に出す「事後分布の期待残数」（docs/spec.md §4①・§6）。
             # 「期待」＝平均を使う（残り時間で見込まれる需要の平均を在庫から差し引いた値）
-            expected_remaining = max(
-                state["remaining"] - updated_mean * (remaining_steps - 1), 0.0
-            )
+            expected_remaining = max(day_remaining - updated_mean * remaining_exposure, 0.0)
 
             outcome.steps.append(
                 ProductStepResult(
                     product_id=p.product_id,
                     step=step,
                     quantity=quantity,
-                    remaining_stock=state["remaining"],
+                    # 1日の残り（店頭在庫＋まだ補充していない分。§5.12）。履歴の再構築
+                    # （初期在庫−累計販売数）と同じ数え方にそろえる
+                    remaining_stock=day_remaining,
                     recommended_rate=state["last_recommended"],
                     posterior_mean=expected_remaining,
                     is_new_recommendation=is_new,
@@ -339,7 +434,7 @@ def run_simulation(
 
     for p in active_products:
         state = states[p.product_id]
-        final_waste_rate = state["remaining"] / p.initial_stock
+        final_waste_rate = (state["remaining"] + state["restock"]) / p.initial_stock
         outcome.finals.append(
             ProductFinalResult(
                 product_id=p.product_id,

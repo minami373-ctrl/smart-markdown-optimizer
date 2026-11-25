@@ -16,8 +16,11 @@ from dataclasses import dataclass, field
 from services.simulation import (
     MAX_DISCOUNT,
     STEPS,
+    RESTOCK_STEP,
     ZUBARI_START_STEP,
     ProductInput,
+    demand_curve,
+    split_stock,
     _sample_poisson,
     discount_multiplier,
 )
@@ -31,6 +34,23 @@ FIXED_SCHEDULE_50_STEP = 35
 #: 21時のズバリ引き（実際の売り場の手順。2026-11-26追加）。固定スケジュール側は売れ行きを見ないので、
 #: 21時を過ぎたら下限（元の値段の75%引き）まで一気に下げる
 FIXED_SCHEDULE_ZUBARI_STEP = ZUBARI_START_STEP
+
+
+#: 「お客さんが待つ」効果（docs/spec.md §5.12。2026-11-26追加。本人の売り場での観察にもとづく仮定）。
+#: 値引きの時刻が毎日同じだと、お客さんがそれを覚えて待つ。18時台は「19時に値引きがある」と分かって
+#: いるのであまり買われず、30%引きの間も「あと1時間半で半額」と待つ人が多い。
+#: 固定スケジュール側だけに、比較画面で選んだときだけ掛ける（動的値引きは時刻が日によって変わる）
+ANTICIPATION_BEFORE_30 = 0.5  # 18:00〜19:00の需要の倍率
+ANTICIPATION_DURING_30 = 0.6  # 30%引きの間（19:00〜20:30）の需要の倍率
+ANTICIPATION_START_STEP = 27  # 18:06（18時を過ぎた最初のステップ）
+
+
+def _anticipation_factor(step: int) -> float:
+    if FIXED_SCHEDULE_30_STEP <= step < FIXED_SCHEDULE_50_STEP:
+        return ANTICIPATION_DURING_30
+    if ANTICIPATION_START_STEP <= step < FIXED_SCHEDULE_30_STEP:
+        return ANTICIPATION_BEFORE_30
+    return 1.0
 
 
 def _fixed_schedule_rate(step: int) -> float:
@@ -63,7 +83,10 @@ class ScheduleOutcome:
 
 
 def run_fixed_schedule_simulation(
-    product: ProductInput, seed: int, steps: int = STEPS
+    product: ProductInput,
+    seed: int,
+    steps: int = STEPS,
+    customer_anticipation: bool = False,
 ) -> ScheduleOutcome:
     """固定スケジュールの値引きポリシーで1商品ぶんシミュレーションする（純関数）。
 
@@ -77,24 +100,33 @@ def run_fixed_schedule_simulation(
 
     alpha = product.prior_alpha
     beta = product.prior_beta
-    remaining = product.initial_stock
+    remaining, restock = split_stock(product.initial_stock)
     rng = random.Random(f"{seed}-{product.product_id}")
+    curve = demand_curve(steps)
 
     for step in range(steps):
         rate = _fixed_schedule_rate(step)
+        # 16時の補充（run_simulationと同じ。§5.12）
+        if step == RESTOCK_STEP and restock > 0:
+            remaining += restock
+            restock = 0
 
         # 在庫が残っているステップだけ購入を生成しベイズ更新する。完売後は打ち切りデータの
         # 扱いで更新を止める（services/simulation.pyのrun_simulationと同じ。§5.2 step2b）
         if remaining > 0:
             demand_rate = alpha / beta
             multiplier = discount_multiplier(rate, product.elasticity)
-            true_rate = demand_rate * multiplier
+            exposure = curve[step] * multiplier
+            # 「お客さんが待つ」効果（仮定。選んだときだけ）。お客さんの行動の変化なので、
+            # 店側の学習（ベイズ更新の露出）には入れず、実際の購入の生成にだけ掛ける
+            anticipation = _anticipation_factor(step) if customer_anticipation else 1.0
+            true_rate = demand_rate * exposure * anticipation
             quantity = _sample_poisson(rng, true_rate)
             quantity = min(quantity, remaining)
             remaining -= quantity
 
             alpha += quantity
-            beta += multiplier
+            beta += exposure
         else:
             quantity = 0
 
@@ -102,10 +134,10 @@ def run_fixed_schedule_simulation(
             ScheduleStepResult(
                 step=step,
                 quantity=quantity,
-                remaining_stock=remaining,
+                remaining_stock=remaining + restock,
                 recommended_rate=rate,
             )
         )
 
-    outcome.final_waste_rate = remaining / product.initial_stock
+    outcome.final_waste_rate = (remaining + restock) / product.initial_stock
     return outcome

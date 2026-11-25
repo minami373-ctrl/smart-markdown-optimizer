@@ -102,7 +102,7 @@
 cd backend
 pip install fastapi uvicorn sqlmodel pytest httpx
 python -m seed.load          # seed JSON を SQLite に投入
-uvicorn main:app --reload    # http://localhost:8000/docs
+uvicorn main:app --reload --port 8002   # http://localhost:8002/docs（フロントのプロキシ先に合わせる）
 pytest                       # バックエンドのテスト
 
 # フロントエンド（別ターミナル）

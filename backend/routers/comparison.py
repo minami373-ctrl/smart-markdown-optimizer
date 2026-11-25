@@ -32,6 +32,8 @@ class ComparisonCreate(BaseModel):
     target_waste_rate: float = Field(ge=0.0, le=0.10)
     #: 動的値引き側のズバリ引きの承認の遅れ（docs/spec.md §5.11。POST /api/simulationsと同じ）
     approval_delay_steps: int = Field(default=0, ge=0, le=3)
+    #: 「お客さんが待つ」効果を固定スケジュール側に入れるか（docs/spec.md §5.12。仮定なので選べる）
+    customer_anticipation: bool = False
 
 
 class ScheduleStepOut(BaseModel):
@@ -144,7 +146,9 @@ def compare_schedules(
             # 初期在庫0の商品は結果から除外する（docs/spec.md §5.9。run_simulationの
             # active_productsフィルタと同じ扱い。0除算を避けるためでもある）
             continue
-        fixed_outcome = run_fixed_schedule_simulation(inp, seed=seed)
+        fixed_outcome = run_fixed_schedule_simulation(
+            inp, seed=seed, customer_anticipation=body.customer_anticipation
+        )
         dynamic_final = dynamic_finals.get(inp.product_id)
         result_products.append(
             ComparisonProductOut(

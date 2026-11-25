@@ -6,6 +6,8 @@ export interface CompareInput {
   day_type: DayType
   has_event: boolean
   target_waste_rate: number
+  //: 「お客さんが値引きの時刻を覚えて待つ」効果を固定スケジュール側に入れるか（docs/spec.md §5.12。仮定）
+  customer_anticipation?: boolean
 }
 
 // 固定スケジュール値引きとの比較（docs/spec.md §5.9）。DBには保存されない一過性の比較
