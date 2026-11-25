@@ -631,8 +631,8 @@ def test_forgetting_catches_up_faster_when_demand_changes() -> None:
 def test_unusual_sales_alert_thresholds() -> None:
     from services.simulation import unusual_sales_alert
 
-    assert unusual_sales_alert(sold=6, expected=10.0) == "low"
-    assert unusual_sales_alert(sold=7, expected=10.0) is None
+    assert unusual_sales_alert(sold=7, expected=10.0) == "low"
+    assert unusual_sales_alert(sold=8, expected=10.0) is None
     assert unusual_sales_alert(sold=14, expected=10.0) == "high"
     assert unusual_sales_alert(sold=0, expected=2.0) is None  # 予測が少なすぎる商品は判定しない
 
