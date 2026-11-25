@@ -52,9 +52,14 @@ export interface PriorDemand {
   beta: number
 }
 
+/** 商品の種類（docs/spec.md §2.1） */
+export const PRODUCT_CATEGORIES = ['弁当・丼', '揚げ物の単品', '軽食・つまみ'] as const
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number]
+
 export interface Product {
   id: number
   name: string
+  category: ProductCategory
   initial_stock: number
   elasticity: number
   prior_demand: Record<string, PriorDemand>
@@ -63,6 +68,7 @@ export interface Product {
 
 export interface ProductCreateInput {
   name: string
+  category: ProductCategory
   initial_stock: number
   elasticity: number
   base_demand: number

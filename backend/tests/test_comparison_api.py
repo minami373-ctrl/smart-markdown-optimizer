@@ -173,7 +173,7 @@ def test_compare_rejects_target_waste_rate_out_of_range(
 def test_compare_fixed_schedule_never_discounts_before_30_step(
     session: Session, client: TestClient
 ) -> None:
-    """需要が低い条件でも、固定スケジュール側はステップ33（19時相当）より前は値引きしない。"""
+    """需要が低い条件でも、固定スケジュール側はステップ30（19時相当）より前は値引きしない。"""
     _add_product(session, "唐揚げ", initial_stock=100)
 
     res = client.post(

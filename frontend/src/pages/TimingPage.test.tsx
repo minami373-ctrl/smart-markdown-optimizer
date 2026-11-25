@@ -26,7 +26,7 @@ describe('TimingPage', () => {
         has_event: false,
         sample_count: 4,
         discounted_count: 3,
-        avg_first_discount_step: 20, // stepToClockTime(20)=15:30
+        avg_first_discount_step: 20, // stepToClockTime(20)=16:00
       },
     ]
     vi.spyOn(discountTimingApi, 'fetchDiscountTiming').mockResolvedValue(conditions)
@@ -34,7 +34,7 @@ describe('TimingPage', () => {
     render(<TimingPage />)
 
     expect(await screen.findByText('発生 3/4回')).toBeInTheDocument()
-    expect(screen.getByText('15:30ごろ')).toBeInTheDocument()
+    expect(screen.getByText('16:00ごろ')).toBeInTheDocument()
     // データがある1マス以外の11マスは引き続き「データなし」
     expect(screen.getAllByText('データなし')).toHaveLength(11)
   })

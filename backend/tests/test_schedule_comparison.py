@@ -64,8 +64,8 @@ def test_run_fixed_schedule_simulation_zero_stock_returns_empty_outcome() -> Non
     assert outcome.final_waste_rate == 0.0
 
 
-def test_run_fixed_schedule_simulation_never_discounts_before_step_33() -> None:
-    """需要が極端に低い商品でも、固定スケジュールはステップ33（19時相当）より前は
+def test_run_fixed_schedule_simulation_never_discounts_before_step_30() -> None:
+    """需要が極端に低い商品でも、固定スケジュールはステップ30（19時相当）より前は
     値引きしない（動的値引きと違い、実際の売れ行きを一切見ないため）。"""
     product = make_product(stock=100, alpha=0.1, beta=2.0)  # 需要が非常に低い
 
@@ -103,6 +103,6 @@ def test_dynamic_and_fixed_schedule_share_the_same_starting_random_stream() -> N
     dynamic_quantities = [s.quantity for s in sorted(dynamic.steps, key=lambda s: s.step)]
     fixed_quantities = [s.quantity for s in fixed.steps]
 
-    # ステップ33（固定スケジュールが最初に動くステップ）より前は、動的値引き側も
+    # ステップ30（固定スケジュールが最初に動くステップ）より前は、動的値引き側も
     # 値引きしていない前提（高需要のため）なので、両者の購入個数は完全に一致するはず
     assert dynamic_quantities[:FIXED_SCHEDULE_30_STEP] == fixed_quantities[:FIXED_SCHEDULE_30_STEP]

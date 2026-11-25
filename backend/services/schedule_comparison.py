@@ -16,11 +16,11 @@ from dataclasses import dataclass, field
 from services.simulation import STEPS, ProductInput, _sample_poisson, discount_multiplier
 
 #: 固定スケジュールの値引きタイミング。frontend/src/lib/clock.tsのstepToClockTime
-#: （営業時間10:00〜21:00・40ステップの換算）を逆算した値（docs/spec.md §5.9）：
-#: 19:00 → (19:00-10:00)/(21:00-10:00)*40 = 540/660*40 ≈ 32.7 → 33
-#: 20:30 → (20:30-10:00)/(21:00-10:00)*40 = 630/660*40 ≈ 38.2 → 38
-FIXED_SCHEDULE_30_STEP = 33
-FIXED_SCHEDULE_50_STEP = 38
+#: （営業時間10:00〜22:00・40ステップの換算。2026-11-26改訂）を逆算した値（docs/spec.md §5.9）：
+#: 19:00 → (19:00-10:00)/(22:00-10:00)*40 = 540/720*40 = 30
+#: 20:30 → (20:30-10:00)/(22:00-10:00)*40 = 630/720*40 = 35
+FIXED_SCHEDULE_30_STEP = 30
+FIXED_SCHEDULE_50_STEP = 35
 
 
 def _fixed_schedule_rate(step: int) -> float:

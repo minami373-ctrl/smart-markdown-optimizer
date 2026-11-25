@@ -21,6 +21,7 @@ def load_products(session: Session) -> int:
         session.add(
             Product(
                 name=item["name"],
+                category=item.get("category", "弁当・丼"),
                 initial_stock=item["initial_stock"],
                 elasticity=item["elasticity"],
                 prior_demand=json.dumps(item["prior_demand"], ensure_ascii=False),

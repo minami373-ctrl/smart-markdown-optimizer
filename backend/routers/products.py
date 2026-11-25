@@ -15,9 +15,14 @@ from services.prior import generate_prior_demand
 router = APIRouter(prefix="/api/products", tags=["products"])
 
 
+#: 商品の種類（docs/spec.md §2.1。models.CATEGORIESと同じ3値）
+Category = Literal["弁当・丼", "揚げ物の単品", "軽食・つまみ"]
+
+
 class ProductOut(BaseModel):
     id: int
     name: str
+    category: str
     initial_stock: int
     elasticity: float
     prior_demand: dict
@@ -26,6 +31,8 @@ class ProductOut(BaseModel):
 
 class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=50)
+    #: 種類（docs/spec.md §6）。省略時は「弁当・丼」
+    category: Category = "弁当・丼"
     initial_stock: int = Field(gt=0)
     elasticity: float = Field(gt=0)
     #: 平日・晴れ・イベントなしの日、1ステップあたり平均何個売れそうかの目安値（docs/spec.md §5.4）
@@ -46,6 +53,7 @@ def _to_out(p: Product) -> ProductOut:
     return ProductOut(
         id=p.id,
         name=p.name,
+        category=p.category,
         initial_stock=p.initial_stock,
         elasticity=p.elasticity,
         prior_demand=json.loads(p.prior_demand),
@@ -66,6 +74,7 @@ def create_product(
     prior_demand = generate_prior_demand(body.base_demand)
     product = Product(
         name=body.name,
+        category=body.category,
         initial_stock=body.initial_stock,
         elasticity=body.elasticity,
         prior_demand=json.dumps(prior_demand, ensure_ascii=False),
@@ -81,7 +90,7 @@ def create_product(
 def update_product(
     product_id: int, body: ProductCreate, session: Session = Depends(get_session)
 ) -> ProductOut:
-    """商品名・初期在庫・値引き感度・基準需要・単価を丸ごと上書きする（部分更新ではない）。
+    """商品名・種類・初期在庫・値引き感度・基準需要・単価を丸ごと上書きする（部分更新ではない）。
     基準需要から12条件ぶんの事前分布を作り直す（docs/spec.md §4②）。"""
     product = session.get(Product, product_id)
     if product is None:
@@ -89,6 +98,7 @@ def update_product(
 
     prior_demand = generate_prior_demand(body.base_demand)
     product.name = body.name
+    product.category = body.category
     product.initial_stock = body.initial_stock
     product.elasticity = body.elasticity
     product.prior_demand = json.dumps(prior_demand, ensure_ascii=False)

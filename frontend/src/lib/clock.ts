@@ -1,9 +1,9 @@
 const BUSINESS_START_MINUTES = 10 * 60 // 10:00
-const BUSINESS_END_MINUTES = 21 * 60 // 21:00
+const BUSINESS_END_MINUTES = 22 * 60 // 22:00（2026-11-26改訂。1ステップ18分）
 const DEFAULT_TOTAL_STEPS = 40
 
 /**
- * シミュレーションのステップ番号を営業時間（10:00〜21:00。docs/spec.md §5.2）内の
+ * シミュレーションのステップ番号を営業時間（10:00〜22:00。docs/spec.md §5.2）内の
  * 時刻（`HH:MM`）に変換する純関数（docs/spec.md §4①「現在の時刻」）。
  * `step`が範囲外でも`0`〜`totalSteps`にクランプし、壊れた表示にしない。
  */

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ProductsPage from './ProductsPage'
 import * as productsApi from '../api/products'
+import type { Product } from '../api/types'
 
 // jsdomはcanvasを実装していないため、在庫調整履歴グラフ（StockAdjustmentHistory）のLineは
 // 軽量スタブに差し替える（SimulationPage.test.tsxと同じ理由。データ整形ロジック自体は
@@ -11,10 +12,11 @@ vi.mock('react-chartjs-2', () => ({
   Line: () => null,
 }))
 
-const ONE_PRODUCT = [
+const ONE_PRODUCT: Product[] = [
   {
     id: 1,
     name: '唐揚げ',
+    category: '弁当・丼',
     initial_stock: 50,
     elasticity: 0.12,
     prior_demand: { 晴れ_平日_なし: { alpha: 3.12, beta: 2.0 } },
@@ -38,6 +40,7 @@ describe('ProductsPage', () => {
       {
         id: 1,
         name: '唐揚げ',
+        category: '弁当・丼',
         initial_stock: 50,
         elasticity: 0.12,
         prior_demand: {
@@ -89,6 +92,7 @@ describe('ProductsPage', () => {
     const createSpy = vi.spyOn(productsApi, 'createProduct').mockResolvedValue({
       id: 2,
       name: 'たこ焼き',
+      category: '弁当・丼',
       initial_stock: 20,
       elasticity: 0.15,
       prior_demand: {},
@@ -105,6 +109,7 @@ describe('ProductsPage', () => {
     await waitFor(() => {
       expect(createSpy).toHaveBeenCalledWith({
         name: 'たこ焼き',
+        category: '弁当・丼',
         initial_stock: 20,
         elasticity: 0.12,
         base_demand: 1,
@@ -120,6 +125,7 @@ describe('ProductsPage', () => {
     const createSpy = vi.spyOn(productsApi, 'createProduct').mockResolvedValue({
       id: 2,
       name: 'たこ焼き',
+      category: '弁当・丼',
       initial_stock: 20,
       elasticity: 0.15,
       prior_demand: {},
@@ -357,6 +363,7 @@ describe('ProductsPage', () => {
     await waitFor(() => {
       expect(updateSpy).toHaveBeenCalledWith(1, {
         name: '唐揚げ大盛り',
+        category: '弁当・丼',
         initial_stock: 50,
         elasticity: 0.12,
         base_demand: 1.3,
@@ -432,6 +439,31 @@ describe('ProductsPage', () => {
     await waitFor(() => {
       expect(adjustmentsSpy).toHaveBeenCalledWith(1)
       expect(adjustmentsSpy).toHaveBeenCalledWith(2)
+    })
+  })
+
+  it('種類を選んで追加すると、createProductに種類が渡される（docs/spec.md §2.1）', async () => {
+    vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue(ONE_PRODUCT)
+    const createSpy = vi.spyOn(productsApi, 'createProduct').mockResolvedValue({
+      id: 2,
+      name: 'たこ焼き',
+      category: '軽食・つまみ',
+      initial_stock: 20,
+      elasticity: 0.15,
+      prior_demand: {},
+      unit_price: null,
+    })
+
+    const user = userEvent.setup()
+    render(<ProductsPage />)
+    await screen.findByText(/唐揚げ/)
+
+    await user.type(screen.getByLabelText('商品名'), 'たこ焼き')
+    await user.selectOptions(screen.getByLabelText('種類'), '軽食・つまみ')
+    await user.click(screen.getByRole('button', { name: '追加' }))
+
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ category: '軽食・つまみ' }))
     })
   })
 })

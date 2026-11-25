@@ -19,6 +19,7 @@ vi.mock('react-chartjs-2', () => ({
 const PRODUCT: Product = {
   id: 1,
   name: '唐揚げ',
+  category: '弁当・丼',
   initial_stock: 10,
   elasticity: 0.12,
   prior_demand: { 晴れ_平日_なし: { alpha: 3.0, beta: 2.0 } },
@@ -66,7 +67,7 @@ describe('SimulationPage', () => {
     expect(await screen.findByText('条件を設定して「営業開始」を押してください。')).toBeInTheDocument()
   })
 
-  it('開始前は現在時刻を表示せず、開始後は営業時間内の時刻（開始10:00→終了21:00）を表示する', async () => {
+  it('開始前は現在時刻を表示せず、開始後は営業時間内の時刻（開始10:00→終了22:00）を表示する', async () => {
     vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([PRODUCT])
     vi.spyOn(simulationsApi, 'createSimulation').mockResolvedValue(makeDetail(1, 0))
 
@@ -81,7 +82,7 @@ describe('SimulationPage', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText('現在 21:00')).toBeInTheDocument()
+        expect(screen.getByText('現在 22:00')).toBeInTheDocument()
       },
       { timeout: 2000 },
     )

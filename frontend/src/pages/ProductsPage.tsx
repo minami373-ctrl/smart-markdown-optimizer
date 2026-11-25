@@ -6,7 +6,8 @@ import {
   fetchStockAdjustments,
   updateProduct,
 } from '../api/products'
-import type { Product, StockAdjustmentLogEntry } from '../api/types'
+import { PRODUCT_CATEGORIES } from '../api/types'
+import type { Product, ProductCategory, StockAdjustmentLogEntry } from '../api/types'
 import StockAdjustmentHistory from '../components/StockAdjustmentHistory'
 
 //: §5.4の倍率 晴れ1.2×平日1.0×イベントなし1.0×beta2.0 の逆算（docs/spec.md §4②）
@@ -21,6 +22,8 @@ function estimateBaseDemand(p: Product): number {
 
 interface ProductFormValues {
   name: string
+  //: 種類（docs/spec.md §2.1）
+  category: ProductCategory
   initialStock: number
   elasticity: number
   baseDemand: number
@@ -70,6 +73,19 @@ function ProductForm({
           value={values.name}
           onChange={(e) => onChange({ ...values, name: e.target.value })}
         />
+      </label>
+      <label>
+        種類
+        <select
+          value={values.category}
+          onChange={(e) => onChange({ ...values, category: e.target.value as ProductCategory })}
+        >
+          {PRODUCT_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </label>
       <label>
         初期在庫
@@ -136,6 +152,7 @@ export default function ProductsPage() {
 
   const [addValues, setAddValues] = useState<ProductFormValues>({
     name: '',
+    category: '弁当・丼',
     initialStock: 20,
     elasticity: 0.12,
     baseDemand: 1.0,
@@ -179,6 +196,7 @@ export default function ProductsPage() {
     try {
       await createProduct({
         name: addValues.name,
+        category: addValues.category,
         initial_stock: addValues.initialStock,
         elasticity: addValues.elasticity,
         base_demand: addValues.baseDemand,
@@ -202,6 +220,7 @@ export default function ProductsPage() {
     setEditingId(p.id)
     setEditValues({
       name: p.name,
+      category: p.category,
       initialStock: p.initial_stock,
       elasticity: p.elasticity,
       baseDemand: estimateBaseDemand(p),
@@ -216,6 +235,7 @@ export default function ProductsPage() {
     try {
       await updateProduct(editingId, {
         name: editValues.name,
+        category: editValues.category,
         initial_stock: editValues.initialStock,
         elasticity: editValues.elasticity,
         base_demand: editValues.baseDemand,
@@ -280,7 +300,7 @@ export default function ProductsPage() {
             </>
           ) : (
             <h2>
-              {p.name}（初期在庫 {p.initial_stock}・値引き感度 {p.elasticity}
+              {p.name}（{p.category}・初期在庫 {p.initial_stock}・値引き感度 {p.elasticity}
               {p.unit_price != null && `・単価 ¥${p.unit_price}`}）
               <button className="link-secondary" onClick={() => startEdit(p)}>
                 編集

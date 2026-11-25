@@ -10,10 +10,12 @@ from sqlmodel import Field, SQLModel
 #: 天気・曜日区分・イベント有無の許容値（services/simulation.py と共有）
 WEATHERS: tuple[str, ...] = ("晴れ", "曇り", "雨")
 DAY_TYPES: tuple[str, ...] = ("平日", "休日")
+#: 商品の種類（docs/spec.md §2.1・§6。2026-11-26追加）。先頭が既定値
+CATEGORIES: tuple[str, ...] = ("弁当・丼", "揚げ物の単品", "軽食・つまみ")
 
 
 class Product(SQLModel, table=True):
-    """商品（初期状態は3件・seed投入。画面から追加・削除できる）。prior_demand は
+    """商品（初期状態は12件・seed投入。画面から追加・削除できる）。prior_demand は
     12通り（天気3×曜日2×イベント2）のガンマ分布パラメータを JSON 文字列で持つ。
     キー形式: f"{weather}_{day_type}_{'あり' if has_event else 'なし'}"
     """
@@ -24,6 +26,8 @@ class Product(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     name: str
+    # 種類（docs/spec.md §2.1）。売れ方の違いを値引き感度の差として表すための区分
+    category: str = Field(default=CATEGORIES[0])
     initial_stock: int
     elasticity: float  # 値引き10%あたりの需要増加倍率
     prior_demand: str  # JSON文字列（12キー、各 {"alpha": float, "beta": float}）

@@ -462,3 +462,61 @@ def test_stock_adjustment_log_survives_product_deletion(
         select(StockAdjustmentLog).where(StockAdjustmentLog.product_id == product.id)
     ).all()
     assert len(remaining) == 1
+
+
+# --- 商品の種類（docs/spec.md §2.1・§6。2026-11-26追加） ---
+
+_CREATE_BODY = {
+    "name": "ロースカツ",
+    "initial_stock": 25,
+    "elasticity": 0.06,
+    "base_demand": 0.45,
+    "unit_price": 250,
+}
+
+
+def test_create_product_saves_category(client: TestClient) -> None:
+    res = client.post("/api/products", json={**_CREATE_BODY, "category": "揚げ物の単品"})
+    assert res.status_code == 201
+    assert res.json()["category"] == "揚げ物の単品"
+    listed = client.get("/api/products").json()
+    assert listed[0]["category"] == "揚げ物の単品"
+
+
+def test_create_product_without_category_defaults_to_bento(client: TestClient) -> None:
+    res = client.post("/api/products", json=_CREATE_BODY)
+    assert res.status_code == 201
+    assert res.json()["category"] == "弁当・丼"
+
+
+def test_create_product_rejects_unknown_category(client: TestClient) -> None:
+    res = client.post("/api/products", json={**_CREATE_BODY, "category": "寿司"})
+    assert res.status_code == 422
+
+
+def test_update_product_overwrites_category(client: TestClient) -> None:
+    created = client.post("/api/products", json={**_CREATE_BODY, "category": "揚げ物の単品"}).json()
+    res = client.patch(
+        f"/api/products/{created['id']}", json={**_CREATE_BODY, "category": "軽食・つまみ"}
+    )
+    assert res.status_code == 200
+    assert res.json()["category"] == "軽食・つまみ"
+
+
+def test_seed_has_12_products_in_3_categories(session: Session) -> None:
+    from collections import Counter
+
+    from seed.load import load_products
+
+    n = load_products(session)
+    products = session.exec(select(Product)).all()
+    assert n == 12
+    assert len(products) == 12
+    assert Counter(p.category for p in products) == {
+        "弁当・丼": 4,
+        "揚げ物の単品": 4,
+        "軽食・つまみ": 4,
+    }
+    # 売り場での観察（§2.1）：値引き感度は 弁当・丼 > 軽食・つまみ > 揚げ物の単品
+    by_cat = {p.category: p.elasticity for p in products}
+    assert by_cat["弁当・丼"] > by_cat["軽食・つまみ"] > by_cat["揚げ物の単品"]
