@@ -223,6 +223,9 @@ class ProductStepResult:
     # 「いつもと違う」の知らせ（§5.16）。ALERT_STEP以降のステップに付く。"low"＝いつもより売れていない、
     # "high"＝いつもより売れている、None＝いつもどおり（または判定前・判定できない）
     alert: str | None = None
+    # 店頭の在庫（2026-11-26追加。§5.12）。remaining_stockは「1日の残り（店頭＋まだ補充していない分）」で、
+    # 16時の補充で増えないため、画面のモニター・表・在庫推移はこちらを使う
+    shelf_stock: int | None = None
 
 
 @dataclass
@@ -527,6 +530,7 @@ def run_simulation(
                     # 1日の残り（店頭在庫＋まだ補充していない分。§5.12）。履歴の再構築
                     # （初期在庫−累計販売数）と同じ数え方にそろえる
                     remaining_stock=day_remaining,
+                    shelf_stock=state["remaining"],
                     recommended_rate=state["last_recommended"],
                     posterior_mean=expected_remaining,
                     is_new_recommendation=is_new,

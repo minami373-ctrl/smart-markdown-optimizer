@@ -17,6 +17,8 @@ export interface StepOut {
   applied_rate?: number
   //: 「いつもと違う」の知らせ（docs/spec.md §5.16）。POSTの応答だけ
   alert?: 'low' | 'high' | null
+  //: 店頭の在庫（16時の補充で増える）。remaining_stockは1日の残り（補充前の分も含む）
+  shelf_stock?: number | null
 }
 
 /** 実際の状況（店は知らない。docs/spec.md §5.16） */

@@ -460,3 +460,14 @@ def test_stock_mode_forecast_uses_the_planned_stock_and_skips_auto_adjust(
     assert res["stock_adjustments"] == []
     session.refresh(p)
     assert p.initial_stock == 99  # いつもの量は変えない
+
+
+def test_history_reconstructs_the_same_shelf_stock(session: Session, client: TestClient) -> None:
+    """履歴の再構築（GET）でも、POSTと同じ店頭の在庫（16時の補充で増える）が返る。"""
+    _add_products(session)
+    body = {"weather": "晴れ", "day_type": "平日", "has_event": False, "target_waste_rate": 0.05}
+    created = client.post("/api/simulations", json=body).json()
+    detail = client.get(f"/api/simulations/{created['id']}").json()
+    post = [(s["product_id"], s["step"], s["shelf_stock"]) for s in created["steps"]]
+    get = [(s["product_id"], s["step"], s["shelf_stock"]) for s in detail["steps"]]
+    assert post == get

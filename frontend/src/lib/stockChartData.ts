@@ -2,6 +2,8 @@ export interface StockChartStep {
   product_id: number
   step: number
   remaining_stock: number | null
+  //: 店頭の在庫（あれば種類ごとの在庫推移はこちらを使う。16時の補充で増える）
+  shelf_stock?: number | null
 }
 
 export interface StockChartProduct {
@@ -83,8 +85,9 @@ export function buildCategoryStockChartData(
       let total: number | null = null
       for (const s of steps) {
         if (s.step !== step || categoryOf.get(s.product_id) !== category) continue
-        if (s.remaining_stock == null) continue
-        total = (total ?? 0) + s.remaining_stock
+        const stock = s.shelf_stock ?? s.remaining_stock
+        if (stock == null) continue
+        total = (total ?? 0) + stock
       }
       return total
     })

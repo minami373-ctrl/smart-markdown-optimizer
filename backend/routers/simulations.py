@@ -23,7 +23,9 @@ from models import (
     StockAdjustmentLog,
 )
 from services.simulation import (
+    RESTOCK_STEP,
     ProductInput,
+    split_stock,
     carry_over,
     condition_key,
     planned_stock,
@@ -84,6 +86,8 @@ class StepOut(BaseModel):
     applied_rate: float = 0.0
     # 「いつもと違う」の知らせ（docs/spec.md §5.16）。POSTの応答だけ（履歴の再構築では null）
     alert: str | None = None
+    # 店頭の在庫（§5.12）。16時の補充で増える。remaining_stockは1日の残り（補充前の分も含む）
+    shelf_stock: int | None = None
 
 
 class FinalOut(BaseModel):
@@ -345,6 +349,7 @@ def create_simulation(
                 posterior_beta=s.posterior_beta,
                 applied_rate=s.applied_rate,
                 alert=s.alert,
+                shelf_stock=s.shelf_stock,
             )
             for s in outcome.steps
         ],
@@ -425,6 +430,11 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
         if log.product_id in remaining_by_product:
             remaining_by_product[log.product_id] -= log.quantity
         remaining_stock = remaining_by_product.get(log.product_id)
+        # 店頭の在庫＝1日の残り−まだ補充していない分（補充は16時＝RESTOCK_STEPの販売の前。§5.12）
+        shelf_stock = None
+        if remaining_stock is not None:
+            pending = split_stock(initial_stock[log.product_id])[1] if log.step < RESTOCK_STEP else 0
+            shelf_stock = remaining_stock - pending
 
         product_recs = rec_by_product.get(log.product_id, [])
         idx = rec_index.get(log.product_id, 0)
@@ -445,6 +455,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
                 posterior_mean=None,
                 is_new_recommendation=is_new,
                 applied_rate=log.applied_rate,
+                shelf_stock=shelf_stock,
             )
         )
 

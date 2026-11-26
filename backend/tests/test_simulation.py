@@ -656,3 +656,18 @@ def test_planned_stock_is_the_full_price_demand_of_the_day() -> None:
 
     assert planned_stock(1.0, 2.0) == 20  # 平均0.5 × 40ステップ
     assert planned_stock(0.01, 2.0) == 1  # 最低1個
+
+
+def test_shelf_stock_goes_up_at_the_16_restock() -> None:
+    """店頭の在庫（shelf_stock）は16時の補充（ステップ20）で増える。1日の残り（remaining_stock）は
+    補充前の分も含むので増えない。店頭＋まだ補充していない分＝1日の残り。"""
+    from services.simulation import RESTOCK_STEP, split_stock
+
+    product = make_product(stock=40, alpha=0.4, beta=2.0)
+    steps = sorted(run_simulation([product], target_waste_rate=0.05, seed=2).steps, key=lambda s: s.step)
+    before, at = steps[RESTOCK_STEP - 1], steps[RESTOCK_STEP]
+    restock = split_stock(40)[1]
+    assert at.shelf_stock == before.shelf_stock + restock - at.quantity
+    for s in steps:
+        pending = restock if s.step < RESTOCK_STEP else 0
+        assert s.shelf_stock + pending == s.remaining_stock

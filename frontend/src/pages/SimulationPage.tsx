@@ -411,7 +411,8 @@ export default function SimulationPage() {
                 name: p.name,
                 unitPrice: p.unit_price,
                 appliedRate: step?.applied_rate ?? step?.recommended_rate ?? 0,
-                remainingStock: step?.remaining_stock ?? p.initial_stock,
+                // 店頭の在庫（16時の補充で増える。昼に売り切れたら補充まで「売り切れ」）
+                remainingStock: step?.shelf_stock ?? step?.remaining_stock ?? p.initial_stock,
               }
             })}
           />
@@ -422,7 +423,7 @@ export default function SimulationPage() {
               <thead>
                 <tr>
                   <th>商品</th>
-                  <th className="num">残り</th>
+                  <th className="num">店頭 / 1日の量</th>
                   <th>売り場の表示</th>
                   <th>確認すること</th>
                 </tr>
@@ -436,7 +437,7 @@ export default function SimulationPage() {
                     <tr key={p.id} className={pending ? 'row-pending' : undefined}>
                       <td>{p.name}</td>
                       <td className="num">
-                        {step?.remaining_stock ?? dayStockFor(p)}
+                        {step?.shelf_stock ?? step?.remaining_stock ?? dayStockFor(p)}
                         <span className="sub"> / {dayStockFor(p)}</span>
                       </td>
                       <td>{applied > 0 ? discountLabel(applied, p.unit_price) : '定価'}</td>
@@ -571,7 +572,7 @@ function StockChart({
     <section className="panel">
       <h2>在庫推移</h2>
       <p className="chart-caption">
-        種類ごとの残り在庫の合計。16時の補充で増え、18時以降の値引きで減っていきます。
+        種類ごとの店頭の在庫の合計。16時の補充で増え、18時以降の値引きで減っていきます。
         {series.map((s) => (
           <span key={s.category} style={{ color: CATEGORY_COLORS[s.category], marginLeft: 12 }}>
             ━ {s.category}
