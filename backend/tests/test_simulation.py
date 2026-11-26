@@ -17,6 +17,7 @@ def make_product(
     elasticity: float = 0.15,
     alpha: float = 3.0,
     beta: float = 2.0,
+    true_rate: float | None = None,
 ) -> ProductInput:
     return ProductInput(
         product_id=product_id,
@@ -25,6 +26,7 @@ def make_product(
         elasticity=elasticity,
         prior_alpha=alpha,
         prior_beta=beta,
+        true_rate=true_rate,
     )
 
 
@@ -100,20 +102,16 @@ def test_different_seed_gives_different_result() -> None:
     assert [s.quantity for s in out1.steps] != [s.quantity for s in out2.steps]
 
 
-def test_rain_triggers_discount_earlier_than_sunny() -> None:
-    """基準需要が低い（雨）方が、基準需要が高い（晴れ）より早く値引き提案が出る。"""
-    sunny = make_product(alpha=7.0, beta=2.0)  # 平均需要 3.5/step（在庫30・40stepなら余裕で完売）
-    rainy = make_product(alpha=1.0, beta=2.0)  # 平均需要 0.5/step（需要不足で売れ残りやすい）
-    target = 0.03
-
-    out_sunny = run_simulation([sunny], target_waste_rate=target, seed=100)
-    out_rainy = run_simulation([rainy], target_waste_rate=target, seed=100)
-
-    first_sunny = next((s.step for s in out_sunny.steps if s.recommended_rate > 0), None)
-    first_rainy = next((s.step for s in out_rainy.steps if s.recommended_rate > 0), None)
-
-    assert first_rainy is not None, "需要不足なのに値引き提案が一度も出なかった"
-    assert first_sunny is None or first_rainy < first_sunny
+def test_rain_restocks_less_and_discounts_when_still_left_over() -> None:
+    """2026-11-26改訂（§5.18）：16時の補充は昼の売れ行きで増減するので、需要が低い日（雨）は
+    補充が少なくなる。そのうえで、本当の需要が店の予測よりずっと低い日は、補充を減らしても
+    売れ残るので値引きが出る。"""
+    sunny = make_product(stock=30, alpha=1.5, beta=2.0, true_rate=0.75)
+    rainy = make_product(stock=30, alpha=1.5, beta=2.0, true_rate=0.3)
+    out_sunny = run_simulation([sunny], target_waste_rate=0.03, seed=100)
+    out_rainy = run_simulation([rainy], target_waste_rate=0.03, seed=100)
+    assert out_rainy.finals[0].restocked < out_sunny.finals[0].restocked
+    assert any(s.recommended_rate > 0 for s in out_rainy.steps)
 
 
 def test_is_behind_pace_within_margin_is_false() -> None:
@@ -666,8 +664,34 @@ def test_shelf_stock_goes_up_at_the_16_restock() -> None:
     product = make_product(stock=40, alpha=0.4, beta=2.0)
     steps = sorted(run_simulation([product], target_waste_rate=0.05, seed=2).steps, key=lambda s: s.step)
     before, at = steps[RESTOCK_STEP - 1], steps[RESTOCK_STEP]
-    restock = split_stock(40)[1]
+    outcome_final = run_simulation([product], target_waste_rate=0.05, seed=2).finals[0]
+    restock = outcome_final.restocked
     assert at.shelf_stock == before.shelf_stock + restock - at.quantity
     for s in steps:
         pending = restock if s.step < RESTOCK_STEP else 0
         assert s.shelf_stock + pending == s.remaining_stock
+
+
+# --- 16時に売り場を満杯にする補充（docs/spec.md §5.18。2026-11-26改訂） ---
+
+
+def test_restock_fills_the_floor_to_the_standard_level() -> None:
+    from services.simulation import restock_amount
+
+    # 昼の売れ行きが予測どおり：夜の標準10個まで満杯に。昼の残りが3個なら補充は7個
+    assert restock_amount(10, shelf_now=3, lunch_sold=7, lunch_predicted=7.0) == 7
+    # 昼の残りが多ければ、その分だけ補充を減らす
+    assert restock_amount(10, shelf_now=8, lunch_sold=7, lunch_predicted=7.0) == 2
+
+
+def test_restock_is_smaller_after_a_slow_lunch_and_bigger_after_a_busy_one() -> None:
+    from services.simulation import restock_amount
+
+    # 昼が予測の半分しか売れなかった → 倍率は下限0.7 → 目標7個
+    assert restock_amount(10, shelf_now=2, lunch_sold=4, lunch_predicted=8.0) == 5
+    # 昼が予測の1.2倍売れた → 目標12個
+    assert restock_amount(10, shelf_now=2, lunch_sold=12, lunch_predicted=10.0) == 10
+    # 昼に売り切れた（店頭0）→ 欲しい人がもっといたかもしれないので上限1.3 → 目標13個
+    assert restock_amount(10, shelf_now=0, lunch_sold=10, lunch_predicted=10.0) == 13
+    # 昼の残りが目標より多ければ、補充しない
+    assert restock_amount(10, shelf_now=9, lunch_sold=4, lunch_predicted=8.0) == 0

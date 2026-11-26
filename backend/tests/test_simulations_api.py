@@ -455,8 +455,11 @@ def test_stock_mode_forecast_uses_the_planned_stock_and_skips_auto_adjust(
     res = client.post("/api/simulations", json={**body, "stock_mode": "予測から決める"}).json()
     assert res["stock_mode"] == "予測から決める"
     expected = planned_stock(prior["晴れ_平日_なし"]["alpha"], prior["晴れ_平日_なし"]["beta"])
+    from services.simulation import split_stock
+
     first = min((s for s in res["steps"] if s["product_id"] == p.id), key=lambda s: s["step"])
-    assert first["remaining_stock"] + first["quantity"] == expected
+    # 予測から決めた量が「標準の1日の量」になり、朝はその半分（切り上げ）を並べる（§5.18）
+    assert first["shelf_stock"] + first["quantity"] == split_stock(expected)[0]
     assert res["stock_adjustments"] == []
     session.refresh(p)
     assert p.initial_stock == 99  # いつもの量は変えない

@@ -108,6 +108,32 @@ def demand_curve(steps: int = STEPS) -> list[float]:
     return [w / mean for w in raw]
 
 
+#: 16時の補充（docs/spec.md §5.18。2026-11-26改訂）：売り場を「夜の標準の量」まで満杯にする。
+#: 昼（16時まで）の売れ行きが予測より悪ければ少なめ、よければ多めにする倍率の範囲
+RESTOCK_MIN_FACTOR = 0.7
+RESTOCK_MAX_FACTOR = 1.3
+
+
+def restock_amount(
+    standard_evening: int, shelf_now: int, lunch_sold: int, lunch_predicted: float
+) -> int:
+    """16時に補充する数（§5.18）。
+
+    夜の標準の量（standard_evening）×昼の売れ行きの倍率まで、売り場をいっぱいにする。
+    昼の売れ残り（shelf_now）があれば、その分だけ補充を減らす（足りない分だけ作る）。
+    倍率＝昼に売れた数÷昼の予測（0.7〜1.3に収める）。昼に売り切れた（店頭0）なら、欲しい人がもっと
+    いたかもしれないので上限の1.3にする。
+    """
+    if shelf_now <= 0:
+        factor = RESTOCK_MAX_FACTOR
+    elif lunch_predicted <= 0:
+        factor = 1.0
+    else:
+        factor = min(RESTOCK_MAX_FACTOR, max(RESTOCK_MIN_FACTOR, lunch_sold / lunch_predicted))
+    target = round(standard_evening * factor)
+    return max(0, target - shelf_now)
+
+
 def split_stock(initial_stock: int) -> tuple[int, int]:
     """1日の在庫を(朝に並べる分, 16時に補充する分)に分ける。朝の分は切り上げ。"""
     morning = initial_stock - int(initial_stock * (1 - MORNING_STOCK_RATIO))
@@ -236,6 +262,9 @@ class ProductFinalResult:
     # 終了時点の事後分布（docs/spec.md §5.2 step4「学習の継続」で次回の事前分布として使う）
     final_alpha: float
     final_beta: float
+    # その日に実際に作った量（朝の分＋16時の補充）と、16時に補充した数（§5.18）
+    produced: int = 0
+    restocked: int = 0
 
 
 @dataclass
@@ -370,6 +399,8 @@ def run_simulation(
             # 店頭の在庫（朝の分）と、16時に補充する分（docs/spec.md §5.12）
             "remaining": split_stock(p.initial_stock)[0],
             "restock": split_stock(p.initial_stock)[1],
+            # 16時に実際に補充した数（§5.18）。補充する前はNone
+            "restocked": None,
             # 16時の補充直後の在庫（夜の値引き判定の基準。補充するまではNone）
             "evening_stock": None,
             # お客さんの本当の需要（§5.14）。店側の予測とは別に持ち、学習しても変わらない
@@ -398,7 +429,16 @@ def run_simulation(
 
             # 0) 16時の補充（§5.12）。昼の売れ残りと補充分を合わせて夜まで売る
             if step == RESTOCK_STEP:
-                state["remaining"] += state["restock"]
+                # 夜の標準の量まで満杯にする。昼の売れ行きで少なめ／多めに（§5.18。2026-11-26改訂）
+                morning = split_stock(p.initial_stock)[0]
+                lunch_predicted = min(
+                    (p.prior_alpha / p.prior_beta) * sum(curve[:RESTOCK_STEP]), morning
+                )
+                added = restock_amount(
+                    state["restock"], state["remaining"], state["sold_so_far"], lunch_predicted
+                )
+                state["remaining"] += added
+                state["restocked"] = added
                 state["restock"] = 0
                 state["evening_stock"] = state["remaining"]
 
@@ -543,7 +583,15 @@ def run_simulation(
 
     for p in active_products:
         state = states[p.product_id]
-        final_waste_rate = (state["remaining"] + state["restock"]) / p.initial_stock
+        # その日に実際に作った量＝朝の分＋16時に補充した数（§5.18。補充しないまま終わったら朝の分だけ）
+        restocked = state["restocked"] if state["restocked"] is not None else 0
+        produced = split_stock(p.initial_stock)[0] + restocked
+        # 16時より前のステップの「1日の残り」は、実際に補充した数で数え直す
+        # （1日の残り＝作った量−それまでに売れた数。履歴の再構築・機会損失の判定と同じ数え方）
+        for s in outcome.steps:
+            if s.product_id == p.product_id and s.step < RESTOCK_STEP and s.shelf_stock is not None:
+                s.remaining_stock = s.shelf_stock + restocked
+        final_waste_rate = state["remaining"] / produced if produced > 0 else 0.0
         outcome.finals.append(
             ProductFinalResult(
                 product_id=p.product_id,
@@ -551,6 +599,8 @@ def run_simulation(
                 achieved=final_waste_rate <= target_waste_rate,
                 final_alpha=state["alpha"],
                 final_beta=state["beta"],
+                produced=produced,
+                restocked=restocked,
             )
         )
 

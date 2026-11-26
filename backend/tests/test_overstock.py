@@ -116,8 +116,9 @@ def test_detect_overstock_against_real_run_simulation_output() -> None:
     quantities = [s.quantity for s in outcome.steps]
     final = outcome.finals[0]
 
-    result = detect_overstock(rates, quantities, product.initial_stock)
+    # その日に実際に作った量（朝の分＋16時の補充。§5.18）を初期在庫として判定する
+    result = detect_overstock(rates, quantities, final.produced)
 
     assert final.final_waste_rate > 0  # 完売していない
     assert result is not None
-    assert result.final_remaining == round(final.final_waste_rate * product.initial_stock)
+    assert result.final_remaining == round(final.final_waste_rate * final.produced)

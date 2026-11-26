@@ -255,7 +255,9 @@ def create_simulation(
                 product_id=f.product_id,
                 final_waste_rate=f.final_waste_rate,
                 achieved=f.achieved,
-                initial_stock=initial_stock_snapshot[f.product_id],
+                # その日に実際に作った量（朝の分＋16時の補充。§5.18）
+                initial_stock=f.produced,
+                restocked=f.restocked,
             )
         )
 
@@ -403,6 +405,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
     initial_stock = {
         r.product_id: r.initial_stock for r in results if r.product_id in existing_product_ids
     }
+    restocked_by_product = {r.product_id: r.restocked for r in results}
 
     logs = session.exec(
         select(PurchaseLog)
@@ -433,7 +436,7 @@ def get_simulation(run_id: int, session: Session = Depends(get_session)) -> Simu
         # 店頭の在庫＝1日の残り−まだ補充していない分（補充は16時＝RESTOCK_STEPの販売の前。§5.12）
         shelf_stock = None
         if remaining_stock is not None:
-            pending = split_stock(initial_stock[log.product_id])[1] if log.step < RESTOCK_STEP else 0
+            pending = restocked_by_product.get(log.product_id, 0) if log.step < RESTOCK_STEP else 0
             shelf_stock = remaining_stock - pending
 
         product_recs = rec_by_product.get(log.product_id, [])

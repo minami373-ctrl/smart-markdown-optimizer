@@ -21,6 +21,7 @@ from services.simulation import (
     ProductInput,
     _learn,
     demand_curve,
+    restock_amount,
     split_stock,
     _sample_poisson,
     discount_multiplier,
@@ -107,12 +108,20 @@ def run_fixed_schedule_simulation(
     )
     rng = random.Random(f"{seed}-{product.product_id}")
     curve = demand_curve(steps)
+    lunch_sold = 0
+    restocked = 0
 
     for step in range(steps):
         rate = _fixed_schedule_rate(step)
         # 16時の補充（run_simulationと同じ。§5.12）
-        if step == RESTOCK_STEP and restock > 0:
-            remaining += restock
+        if step == RESTOCK_STEP:
+            # 動的値引きと同じ補充のしかた（§5.18）：夜の標準の量まで、昼の売れ行きで増減
+            morning = split_stock(product.initial_stock)[0]
+            lunch_predicted = min(
+                (product.prior_alpha / product.prior_beta) * sum(curve[:RESTOCK_STEP]), morning
+            )
+            restocked = restock_amount(restock, remaining, lunch_sold, lunch_predicted)
+            remaining += restocked
             restock = 0
 
         # 在庫が残っているステップだけ購入を生成しベイズ更新する。完売後は打ち切りデータの
@@ -129,6 +138,8 @@ def run_fixed_schedule_simulation(
             demanded = _sample_poisson(rng, true_rate)
             quantity = min(demanded, remaining)
             remaining -= quantity
+            if step < RESTOCK_STEP:
+                lunch_sold += quantity
 
             # 売り切れたステップは打ち切りデータとして扱う（run_simulationと同じ。§5.14）
             alpha, beta = _learn(alpha, beta, quantity, demanded, exposure)
@@ -139,10 +150,14 @@ def run_fixed_schedule_simulation(
             ScheduleStepResult(
                 step=step,
                 quantity=quantity,
-                remaining_stock=remaining + restock,
+                remaining_stock=remaining,  # 16時より前は下で、実際に補充した数を足して数え直す
                 recommended_rate=rate,
             )
         )
 
-    outcome.final_waste_rate = (remaining + restock) / product.initial_stock
+    for s in outcome.steps:
+        if s.step < RESTOCK_STEP:
+            s.remaining_stock += restocked
+    produced = split_stock(product.initial_stock)[0] + restocked
+    outcome.final_waste_rate = remaining / produced if produced > 0 else 0.0
     return outcome

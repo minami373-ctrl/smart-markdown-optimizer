@@ -88,6 +88,9 @@ class SimulationResult(SQLModel, table=True):
     # Product.initial_stockが後から変わっても、/opportunities・/overstockが過去のrunを
     # 「実行当時と違う初期在庫」で誤って再評価しないようにするため）
     initial_stock: int
+    # 16時に補充した数（docs/spec.md §5.18。2026-11-26追加）。initial_stockは「その日に実際に作った量
+    # （朝の分＋補充）」。履歴の再構築で店頭の在庫を求めるのに使う
+    restocked: int = 0
 
 
 class StockAdjustmentLog(SQLModel, table=True):
