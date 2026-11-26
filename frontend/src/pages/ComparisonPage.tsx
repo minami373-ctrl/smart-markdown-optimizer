@@ -12,6 +12,7 @@ import { Line } from 'react-chartjs-2'
 import { compareSchedules } from '../api/comparison'
 import { stepToClockTime } from '../lib/clock'
 import { computeRevenue } from '../lib/revenue'
+import { COST_RATIO, costOf, producedOf } from '../lib/profit'
 import { chartAxisColors, useTheme } from '../lib/useTheme'
 import type { ComparisonProduct, ComparisonResult, DayType, Weather } from '../api/types'
 import { ACTUAL_SITUATIONS } from '../api/types'
@@ -39,6 +40,66 @@ function WasteRateComparison({ product }: { product: ComparisonProduct }) {
         <span className="tag warn">廃棄率 {formatPercent(-improvement)} 悪化</span>
       )}
     </div>
+  )
+}
+
+/** 全商品の合計で、固定時刻と動的値引きの廃棄・売上・原価・利益を並べる（docs/spec.md §5.20） */
+function TotalComparison({ products }: { products: ComparisonProduct[] }) {
+  const sum = (side: 'fixed' | 'dynamic') => {
+    let produced = 0
+    let wasted = 0
+    let revenue = 0
+    let cost = 0
+    for (const p of products) {
+      const steps = side === 'fixed' ? p.fixed_steps : p.dynamic_steps
+      const made = producedOf(steps) ?? 0
+      const rate = side === 'fixed' ? p.fixed_final_waste_rate : p.dynamic_final_waste_rate
+      produced += made
+      wasted += made * rate
+      if (p.unit_price != null) {
+        revenue += computeRevenue(steps, p.unit_price)
+        cost += costOf(p.unit_price, made)
+      }
+    }
+    return { produced, wasted, revenue, cost, profit: revenue - cost }
+  }
+  const rows = [
+    { label: '固定時刻', ...sum('fixed') },
+    { label: '動的値引き', ...sum('dynamic') },
+  ]
+  const yen = (v: number) => `¥${Math.round(v).toLocaleString()}`
+  return (
+    <section className="panel">
+      <h2>全商品の合計</h2>
+      <table className="list">
+        <thead>
+          <tr>
+            <th>方式</th>
+            <th className="num">作った量</th>
+            <th className="num">廃棄</th>
+            <th className="num">推定売上</th>
+            <th className="num">原価</th>
+            <th className="num">利益</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label}>
+              <td>{r.label}</td>
+              <td className="num">{r.produced}個</td>
+              <td className="num">{Math.round(r.wasted)}個</td>
+              <td className="num">{yen(r.revenue)}</td>
+              <td className="num">{yen(r.cost)}</td>
+              <td className="num">{yen(r.profit)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="sub">
+        原価は売値の{Math.round(COST_RATIO * 100)}%と仮定（業界調査の惣菜の利益率から換算した仮の値）。
+        値引きのやり方で作る量は変わらない（16時の補充は両方同じルール）ので、差は値引きのやり方による。
+      </p>
+    </section>
   )
 }
 
@@ -255,6 +316,7 @@ export default function ComparisonPage() {
         {error && <p className="error">{error}</p>}
       </div>
 
+      {result && <TotalComparison products={result.products} />}
       {result?.products.map((p) => <ProductComparisonCard key={p.product_id} product={p} />)}
     </div>
   )

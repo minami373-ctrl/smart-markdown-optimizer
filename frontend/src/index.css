@@ -724,3 +724,9 @@ details.model summary {
   margin: 0 0 14px;
   font-weight: 600;
 }
+
+/* 閉店後の結果の合計行（docs/spec.md §5.20） */
+tr.total-row td {
+  font-weight: 700;
+  border-top: 2px solid var(--line);
+}

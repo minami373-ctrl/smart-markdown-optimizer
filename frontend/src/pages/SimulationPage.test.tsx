@@ -263,7 +263,9 @@ describe('SimulationPage', () => {
     // 200円 + 200円 = 400円
     await waitFor(
       () => {
-        expect(screen.getByRole('cell', { name: '¥400' })).toBeInTheDocument()
+        // 商品の行と合計の行の両方に¥400（商品が1つなので同じ値）
+        expect(screen.getAllByRole('cell', { name: '¥400' })).toHaveLength(2)
+        expect(screen.getByText('合計')).toBeInTheDocument()
       },
       { timeout: 2000 },
     )

@@ -16,6 +16,7 @@ import { stepToClockTime } from '../lib/clock'
 import { conditionKey } from '../lib/conditionKey'
 import { buildLearningCurveData } from '../lib/learningCurveData'
 import { computeRevenue } from '../lib/revenue'
+import { COST_RATIO, profitOf } from '../lib/profit'
 import { CATEGORY_COLORS, buildCategoryStockChartData } from '../lib/stockChartData'
 import { dayPhase } from '../lib/dayPhase'
 import { storeAlert } from '../lib/storeAlert'
@@ -208,7 +209,30 @@ export default function SimulationPage() {
     return product.initial_stock
   }
 
+  /** この回の推定売上（モニターに出ていた値引きで計算。§5.11） */
+  function revenueFor(product: Product): number {
+    if (!detail || product.unit_price == null) return 0
+    return computeRevenue(
+      detail.steps.filter((s) => s.product_id === product.id),
+      product.unit_price,
+    )
+  }
+
   const finished = detail !== null && visibleStep >= totalSteps && totalSteps > 0
+  // 閉店後の合計（単価がある商品だけ。§5.20）
+  const pricedProducts = products.filter(
+    (p) => p.unit_price != null && detail?.finals.some((f) => f.product_id === p.id),
+  )
+  const totals =
+    finished && pricedProducts.length > 0
+      ? {
+          revenue: pricedProducts.reduce((sum, p) => sum + revenueFor(p), 0),
+          profit: pricedProducts.reduce(
+            (sum, p) => sum + profitOf(revenueFor(p), p.unit_price as number, dayStockFor(p)),
+            0,
+          ),
+        }
+      : null
   // 店全体の「いつもと違う」の知らせ（§5.16）。各商品の今のステップの知らせから求める
   const currentStoreAlert = detail ? storeAlert(products.map((p) => latestStepFor(p.id)?.alert)) : null
 
@@ -467,6 +491,7 @@ export default function SimulationPage() {
                 <th className="num">廃棄率</th>
                 <th>目標</th>
                 <th className="num">推定売上</th>
+                <th className="num">利益</th>
                 <th>明日の在庫</th>
               </tr>
             </thead>
@@ -485,13 +510,11 @@ export default function SimulationPage() {
                       {finalResult.achieved ? '目標達成' : '目標未達'}
                     </td>
                     <td className="num">
+                      {p.unit_price != null && `¥${Math.round(revenueFor(p)).toLocaleString()}`}
+                    </td>
+                    <td className="num">
                       {p.unit_price != null &&
-                        `¥${Math.round(
-                          computeRevenue(
-                            detail.steps.filter((s) => s.product_id === p.id),
-                            p.unit_price,
-                          ),
-                        ).toLocaleString()}`}
+                        `¥${Math.round(profitOf(revenueFor(p), p.unit_price, dayStockFor(p))).toLocaleString()}`}
                     </td>
                     <td className="sub">
                       {stockAdjustment &&
@@ -500,6 +523,16 @@ export default function SimulationPage() {
                   </tr>
                 )
               })}
+              {totals && (
+                <tr className="total-row">
+                  <td>合計</td>
+                  <td />
+                  <td />
+                  <td className="num">¥{Math.round(totals.revenue).toLocaleString()}</td>
+                  <td className="num">¥{Math.round(totals.profit).toLocaleString()}</td>
+                  <td className="sub">利益＝売上−原価（原価は売値の{Math.round(COST_RATIO * 100)}%と仮定）</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </section>

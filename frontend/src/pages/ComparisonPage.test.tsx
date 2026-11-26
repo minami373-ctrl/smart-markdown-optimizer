@@ -82,7 +82,8 @@ describe('ComparisonPage', () => {
     render(<ComparisonPage />)
     await user.click(screen.getByRole('button', { name: '比較する' }))
 
-    expect(await screen.findAllByText(/推定売上/)).toHaveLength(2)
+    // 商品ごとのカードの「固定スケジュール：推定売上」「動的値引き：推定売上」の2つ（合計の表の見出しは別）
+    expect(await screen.findAllByText(/：推定売上/)).toHaveLength(2)
   })
 
   it('単価が未設定の商品には推定売上を表示しない', async () => {
@@ -93,7 +94,7 @@ describe('ComparisonPage', () => {
     await user.click(screen.getByRole('button', { name: '比較する' }))
 
     await screen.findByText('唐揚げ')
-    expect(screen.queryByText(/推定売上/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/：推定売上/)).not.toBeInTheDocument()
   })
 
   it('取得に失敗したらエラーメッセージを表示する', async () => {
