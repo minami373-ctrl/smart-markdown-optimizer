@@ -69,7 +69,7 @@ def test_detects_product_that_sold_out_early_without_discount(
     assert len(body) == 1
     assert body[0]["product_name"] == "唐揚げ"
     assert body[0]["occurrence_count"] == 1
-    assert body[0]["avg_suggested_increase"] == 70
+    assert body[0]["avg_suggested_increase"] == 86
 
 
 def test_uses_snapshot_initial_stock_not_live_value(
@@ -94,7 +94,7 @@ def test_uses_snapshot_initial_stock_not_live_value(
     body = res.json()
     assert len(body) == 1
     # スナップショット値(10)基準の結果のままであり、現在値(999)基準にはならない
-    assert body[0]["avg_suggested_increase"] == 70
+    assert body[0]["avg_suggested_increase"] == 86
 
 
 def test_excludes_product_that_was_discounted(session: Session, client: TestClient) -> None:
@@ -118,7 +118,7 @@ def test_excludes_product_that_was_discounted(session: Session, client: TestClie
 def test_excludes_product_that_never_sells_out(session: Session, client: TestClient) -> None:
     product = _add_product(session, "寿司", initial_stock=100)
     run = _add_finished_run(session)
-    _add_logs(session, run.id, product.id, [1] * 40)
+    _add_logs(session, run.id, product.id, [1] * 48)
     _add_simulation_result(session, run.id, product.id, product.initial_stock)
 
     res = client.get("/api/opportunities")

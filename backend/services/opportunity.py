@@ -5,9 +5,9 @@ DBもネットワークも触らない純関数の集まり。
 
 from dataclasses import dataclass
 
-TOTAL_STEPS = 40
+from services.simulation import STEPS as TOTAL_STEPS  # 15分×48（§5.19）
 #: これ以下のステップで完売したら「早期完売」とみなす（閉店3ステップ以上前）
-MAX_SELLOUT_STEP_FOR_EARLY = 37
+MAX_SELLOUT_STEP_FOR_EARLY = TOTAL_STEPS - 3  # 閉店の3ステップ（45分）以上前
 
 
 @dataclass

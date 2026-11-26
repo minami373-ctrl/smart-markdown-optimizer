@@ -3,13 +3,13 @@ from services.stock_adjustment import compute_stock_adjustment
 
 def test_increases_stock_on_early_sellout_without_discount() -> None:
     # 在庫10個を5ステップ（0〜4）で完売、値引きなし
-    # → suggested_increase = round(10 * (40-5)/5) = 70。半分 = 35
+    # → suggested_increase = round(10 * (48-5)/5) = 86。半分 = 43（1日48ステップ）
     log_steps = [(i, 2) for i in range(5)]
     result = compute_stock_adjustment(initial_stock=10, log_steps=log_steps, recommendation_steps=[])
 
     assert result is not None
-    assert result.delta == 35
-    assert result.new_initial_stock == 45
+    assert result.delta == 43
+    assert result.new_initial_stock == 53
     assert result.reason == "opportunity"
 
 
@@ -44,7 +44,7 @@ def test_decrease_does_not_go_below_one() -> None:
 
 def test_no_adjustment_when_neither_opportunity_nor_overstock() -> None:
     # 値引きされたが最大値引きには達しておらず、かつ完売もしていない
-    log_steps = [(0, 1), (1, 1)] + [(i, 0) for i in range(2, 40)]
+    log_steps = [(0, 1), (1, 1)] + [(i, 0) for i in range(2, 48)]
     recommendation_steps = [(0, 0.30)]
     result = compute_stock_adjustment(
         initial_stock=10, log_steps=log_steps, recommendation_steps=recommendation_steps
@@ -54,8 +54,8 @@ def test_no_adjustment_when_neither_opportunity_nor_overstock() -> None:
 
 
 def test_no_adjustment_when_sold_out_normally_late() -> None:
-    # 閉店間際（37ステップ超）に値引きなしで完売 → 機会損失の対象外（§5.5の境界）
-    log_steps = [(i, 0) for i in range(38)] + [(38, 10)]
+    # 閉店間際（45ステップ超）に値引きなしで完売 → 機会損失の対象外（§5.5の境界）
+    log_steps = [(i, 0) for i in range(46)] + [(46, 10)]
     result = compute_stock_adjustment(initial_stock=10, log_steps=log_steps, recommendation_steps=[])
 
     assert result is None

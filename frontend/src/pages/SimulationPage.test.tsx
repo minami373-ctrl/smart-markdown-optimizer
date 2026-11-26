@@ -480,7 +480,7 @@ describe('SimulationPage', () => {
     expect(screen.getByRole('button', { name: '営業開始' })).not.toBeDisabled()
   })
 
-  it('ズバリ引きの承認の遅れを選ぶと、その値でシミュレーションを作成する（docs/spec.md §5.11）', async () => {
+  it('55%以上の承認の遅れを選ぶと、その値でシミュレーションを作成する（docs/spec.md §5.11）', async () => {
     vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([PRODUCT])
     const createSpy = vi
       .spyOn(simulationsApi, 'createSimulation')
@@ -490,13 +490,13 @@ describe('SimulationPage', () => {
     render(<SimulationPage />)
     await screen.findByText('条件を設定して「営業開始」を押してください。')
 
-    await user.selectOptions(screen.getByLabelText('ズバリ引きの承認（ナイトマネージャー）'), '2')
+    await user.selectOptions(screen.getByLabelText('55%以上の承認（ナイトマネージャー）'), '2')
     await user.click(screen.getByRole('button', { name: '営業開始' }))
 
     expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ approval_delay_steps: 2 }))
   })
 
-  it('ズバリ引きが承認待ちの間は、モニターには前の値引きを出し「承認待ち」を表示する', async () => {
+  it('55%以上が承認待ちの間は、モニターには前の値引きを出し「承認待ち」を表示する', async () => {
     vi.spyOn(productsApi, 'fetchProducts').mockResolvedValue([{ ...PRODUCT, unit_price: 430 }])
     const detail = makeDetail(1, 0)
     detail.steps = [
@@ -532,10 +532,10 @@ describe('SimulationPage', () => {
     await screen.findByText('条件を設定して「営業開始」を押してください。')
     await user.click(screen.getByRole('button', { name: '営業開始' }))
 
-    // 商品カードと売り場モニターの両方に、承認済みの「半額」が出る（ズバリ引きはまだ出ない）
-    expect((await screen.findAllByText('半額')).length).toBe(2)
-    expect(screen.getByLabelText('売り場モニター')).not.toHaveTextContent('ズバリ')
-    expect(screen.getByText(/承認待ち：ズバリ ¥190/)).toBeInTheDocument()
+    // ナイトマネージャーの表と売り場モニターの両方に、承認済みの「50%引き」が出る（55%はまだ出ない）
+    expect((await screen.findAllByText('50%引き')).length).toBe(2)
+    expect(screen.getByLabelText('売り場モニター')).not.toHaveTextContent('55%')
+    expect(screen.getByText(/承認待ち：55%引き/)).toBeInTheDocument()
   })
 
   it('長期休みにチェックすると、is_long_vacation: trueでシミュレーションを作成する（docs/spec.md §5.13）', async () => {

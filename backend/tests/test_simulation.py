@@ -1,11 +1,7 @@
 from services.simulation import (
     DISCOUNT_TIERS,
     MAX_DISCOUNT,
-    SHORTFALL_MARGIN_RATE,
     ProductInput,
-    _is_behind_pace,
-    _required_discount_rate,
-    _snap_to_tier,
     discount_multiplier,
     run_simulation,
 )
@@ -53,31 +49,14 @@ def test_discount_multiplier_grows_faster_than_linear() -> None:
     assert m50 - m30 < m75 - m50, "値引き率が上がるほど、効きの増分が大きくなっていない"
 
 
-def test_discount_tiers_are_30_half_and_zubari() -> None:
-    """docs/spec.md §5.3：実店舗の値引きシールに合わせた4段階。"""
-    assert DISCOUNT_TIERS == (0.0, 0.30, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75)
-    assert DISCOUNT_TIERS[-1] == MAX_DISCOUNT
 
 
-def test_snap_to_tier_rounds_up_not_down() -> None:
-    # 42%は30%と50%の間。切り下げ（30%）ではなく切り上げ（50%）になる
-    assert _snap_to_tier(0.42) == 0.50
-    # ちょうど刻みの値はそのまま
-    assert _snap_to_tier(0.30) == 0.30
-    assert _snap_to_tier(0.50) == 0.50
 
 
-def test_snap_to_tier_zero_stays_zero() -> None:
-    assert _snap_to_tier(0.0) == 0.0
 
 
-def test_snap_to_tier_low_value_rounds_up_to_30() -> None:
-    # 値引きが1%でも必要なら、実際に使える最小の刻みである30%まで切り上げる
-    assert _snap_to_tier(0.01) == 0.30
 
 
-def test_snap_to_tier_clamps_above_max_to_max_discount() -> None:
-    assert _snap_to_tier(0.9) == MAX_DISCOUNT
 
 
 def test_simulation_is_deterministic() -> None:
@@ -114,128 +93,18 @@ def test_rain_restocks_less_and_discounts_when_still_left_over() -> None:
     assert any(s.recommended_rate > 0 for s in out_rainy.steps)
 
 
-def test_is_behind_pace_within_margin_is_false() -> None:
-    """docs/spec.md §5.3「トリガー」：目標ペースからの遅れがマージン以内ならFalse。"""
-    # 目標100個・経過50%なら目標ペースは50個。45個売れていれば遅れは5個（マージンは初期在庫100の15%=15）
-    assert (
-        _is_behind_pace(
-            actual_sold=45,
-            initial_stock=100,
-            target_waste_stock=0,
-            elapsed_steps=20,
-            total_steps=40,
-        )
-        is False
-    )
 
 
-def test_is_behind_pace_beyond_margin_is_true() -> None:
-    """マージンを超えて遅れていればTrue。"""
-    # 目標ペース50個に対し30個しか売れていない＝遅れ20個 > マージン15個
-    assert (
-        _is_behind_pace(
-            actual_sold=30,
-            initial_stock=100,
-            target_waste_stock=0,
-            elapsed_steps=20,
-            total_steps=40,
-        )
-        is True
-    )
 
 
-def test_is_behind_pace_boundary_is_exclusive() -> None:
-    """遅れがちょうどマージンと同値のときはFalse（マージン「以内」に含む。>で判定するため）。"""
-    margin = 100 * SHORTFALL_MARGIN_RATE  # 15
-    assert (
-        _is_behind_pace(
-            actual_sold=50 - margin,
-            initial_stock=100,
-            target_waste_stock=0,
-            elapsed_steps=20,
-            total_steps=40,
-        )
-        is False
-    )
 
 
-def test_is_behind_pace_early_steps_have_small_target_and_rarely_trigger() -> None:
-    """開店直後は目標ペースの絶対量自体が小さいため、実際に0個しか売れていなくても
-    マージン内に収まりやすい（旧GRACE_PERIOD_STEPSの役割をこの仕組みが自然に吸収している
-    ことの確認）。"""
-    # 初期在庫50・目標廃棄率0（全部売り切るのが目標）でも、ステップ1時点の目標ペースは
-    # 50 * (1/40) = 1.25個。0個しか売れていなくても遅れは1.25 < マージン(50*0.15=7.5)
-    assert (
-        _is_behind_pace(
-            actual_sold=0,
-            initial_stock=50,
-            target_waste_stock=0,
-            elapsed_steps=1,
-            total_steps=40,
-        )
-        is False
-    )
 
 
-def test_required_discount_rate_does_not_force_max_for_small_positive_baseline() -> None:
-    """docs/spec.md §5.2 step2c（2026-08-14改訂）の回帰テスト。以前のMAP推定（最頻値）は
-    alpha<=1だと`(alpha-1)/beta`がちょうど0に潰れ、`_required_discount_rate`の
-    「baseline_projected<=0→無条件でMAX_DISCOUNT」という0除算回避の分岐に落ちて、
-    残り時間や不足量の大きさに関係なく問答無用で最大値引きになっていた。事後分布の平均
-    （alpha>0なら常に正）に変えたことで、この無条件MAX分岐そのものを踏まなくなったことを
-    直接確認する。
-
-    2026-08-15改訂：値引きの「トリガー」を実績ベースの`_is_behind_pace`に変更したことで、
-    様子見のぶん遅れが蓄積してから初めて値引き幅を計算するようになった。そのため
-    `run_simulation`レベルでは「最初の提案がいきなり75%になる」こと自体は起こりうる
-    （様子見していた間の遅れを一括で取り戻す必要があるため。これはバグではなく実績ベースの
-    トリガーの自然な帰結）。したがってこのテストは`run_simulation`ではなく
-    `_required_discount_rate`を直接呼び、baseline_rateが「0（旧MAPの0collapse相当）」と
-    「tinyだが正の値（新しい平均ベース）」でどう挙動が変わるかを比較する。"""
-    # baseline_rate=0.0（旧MAP実装が起こしうる0collapse相当）は、不足量や残り時間の大きさに
-    # 関係なく無条件でMAX_DISCOUNTになる（これ自体は0除算回避の既存の安全側フォールバックで
-    # バグではない。だからこそ「baseline_rateが0にならない」ことが重要）
-    forced_max = _required_discount_rate(
-        remaining_stock=20, remaining_steps=30, target_waste_stock=1, baseline_rate=0.0, elasticity=0.15
-    )
-    assert forced_max == MAX_DISCOUNT
-
-    # 同じ不足量・残り時間でも、tinyだが正の値（alpha>0なら平均alpha/betaは必ず正になる）
-    # なら、残り時間が十分にあるぶん無条件MAXにはならず、不足量に見合った緩やかな値引きになる
-    mild = _required_discount_rate(
-        remaining_stock=20, remaining_steps=30, target_waste_stock=1, baseline_rate=0.5, elasticity=0.15
-    )
-    assert mild != MAX_DISCOUNT
-    assert 0.0 < mild < MAX_DISCOUNT
 
 
-def test_recommendation_is_suppressed_while_within_pace_margin() -> None:
-    """docs/spec.md §5.3「トリガー：見込みではなく実際の遅れで判定する」の回帰テスト。
-    需要が極端に低い商品でも、目標ペースからの遅れがマージン以内のうちは
-    値引き提案が一切出ない（値引き率は常に0%のまま）ことを、開店直後の数ステップで確認する。"""
-    # 需要が非常に低い（値引きが最も必要になりやすい）商品でも、開店直後は
-    # 目標ペースの絶対量が小さいためマージン内に収まりやすい
-    product = make_product(stock=10, elasticity=0.15, alpha=0.5, beta=2.0)
-
-    for seed in range(5):
-        outcome = run_simulation([product], target_waste_rate=0.0, seed=seed)
-        # 初期在庫10・目標廃棄率0のとき、マージンは10*0.15=1.5個。
-        # ステップ1(経過1/40)の目標ペースは10*(1/40)=0.25個で、実際の販売数が0でも
-        # 遅れ0.25 < マージン1.5なので、少なくとも最初の数ステップは提案が出ないはず
-        first_step = next(s for s in sorted(outcome.steps, key=lambda s: s.step) if s.step == 0)
-        assert first_step.recommended_rate == 0.0, f"seed={seed}: 開店直後から値引き提案が出た"
-        assert not first_step.is_new_recommendation
 
 
-def test_required_discount_rate_stricter_target_needs_more_discount() -> None:
-    """§5.3の計算式そのものを直接検証する（シミュレーションのばらつきに左右されない）。"""
-    strict = _required_discount_rate(
-        remaining_stock=10, remaining_steps=10, target_waste_stock=0, baseline_rate=0.5, elasticity=0.15
-    )
-    lenient = _required_discount_rate(
-        remaining_stock=10, remaining_steps=10, target_waste_stock=3, baseline_rate=0.5, elasticity=0.15
-    )
-    assert strict > lenient > 0
 
 
 def test_products_are_independent() -> None:
@@ -368,50 +237,12 @@ def test_recommended_rate_stays_at_max_once_reached() -> None:
 # --- ズバリ引き（docs/spec.md §5.3。2026-11-26追加） ---
 
 
-def test_snap_to_tier_before_21_caps_at_half() -> None:
-    """21時より前（allow_zubari=False）は30%引き・半額の2段階だけ。半額を超える値は半額に抑える。"""
-    assert _snap_to_tier(0.42, allow_zubari=False) == 0.50
-    assert _snap_to_tier(0.62, allow_zubari=False) == 0.50
-    assert _snap_to_tier(0.9, allow_zubari=False) == 0.50
 
 
-def test_snap_to_tier_after_21_uses_5_percent_zubari_steps() -> None:
-    assert _snap_to_tier(0.52) == 0.55
-    assert _snap_to_tier(0.61) == 0.65
-    assert _snap_to_tier(0.9) == MAX_DISCOUNT
 
 
-def test_zubari_discount_only_appears_from_step_37() -> None:
-    """半額より大きい値引き（ズバリ引き）は、21時を過ぎたステップ（37）以降にしか出ない。
-    需要が非常に低い商品（ふつうなら早くから最大値引きになる）でも、37より前は半額で止まる。"""
-    from services.simulation import ZUBARI_START_STEP
-
-    product = make_product(stock=100, alpha=0.5, beta=2.0)
-    reached_zubari = 0
-    for seed in range(5):
-        outcome = run_simulation([product], target_waste_rate=0.0, seed=seed)
-        for s in outcome.steps:
-            if s.step < ZUBARI_START_STEP:
-                assert s.recommended_rate <= 0.50, f"seed={seed} step={s.step}: {s.recommended_rate}"
-        if max(s.recommended_rate for s in outcome.steps) > 0.50:
-            reached_zubari += 1
-    # 売れ行きがよい乱数では半額のままで間に合うこともある（それは正しい動き）。
-    # テストの前提として、少なくとも1つのseedでは21時以降にズバリ引きへ進むことを確認する
-    assert reached_zubari >= 1
 
 
-def test_required_discount_rate_is_inverse_of_discount_multiplier() -> None:
-    """値引き幅の逆算は、需要倍率の式（2乗。discount_multiplier）とぴったり逆になっている
-    （2026-11-26修正。以前は1乗の式で逆算していて、必要な値引きを大きめに見積もっていた）。
-    求めた値引き率で需要倍率を計算し直すと、必要だった倍率に戻ることを確認する。"""
-    rate = _required_discount_rate(
-        remaining_stock=20, remaining_steps=10, target_waste_stock=0, baseline_rate=1.0, elasticity=0.15
-    )
-    # 必要な倍率 = 20 / (1.0 × 10) = 2.0
-    assert 0.0 < rate < MAX_DISCOUNT
-    assert abs(discount_multiplier(rate, elasticity=0.15) - 2.0) < 1e-9
-    # 1乗の式なら 1.0 × 0.1 ÷ 0.15 ≈ 0.667 になっていた。2乗の逆算は 0.1 × √(1 ÷ 0.15) ≈ 0.258
-    assert abs(rate - 0.1 * (1 / 0.15) ** 0.5) < 1e-9
 
 
 # --- ナイトマネージャーの承認（docs/spec.md §5.11。2026-11-26追加） ---
@@ -428,20 +259,21 @@ def test_approval_delay_zero_applies_every_proposal_immediately() -> None:
         assert all(s.applied_rate == s.recommended_rate for s in outcome.steps)
 
 
-def test_30_percent_and_half_are_applied_without_waiting_for_approval() -> None:
-    """承認が遅れても、30%引き・半額は提案と同時にモニターに出る（承認が要るのはズバリ引きだけ）。"""
+def test_below_55_percent_is_applied_without_waiting_for_approval() -> None:
+    """承認が遅れても、55%未満は提案と同時にモニターに出る（承認が要るのは55%以上だけ。§5.19）。"""
     for seed in range(5):
         outcome = run_simulation(
             _low_demand_products(), target_waste_rate=0.0, seed=seed, approval_delay_steps=3
         )
         for s in outcome.steps:
-            if s.recommended_rate <= 0.50:
+            if s.recommended_rate < 0.55:
                 assert s.applied_rate == s.recommended_rate
 
 
-def test_zubari_is_applied_only_after_the_approval_delay() -> None:
-    """ズバリ引きは、提案されたステップから approval_delay_steps 後に初めてモニターに出る。
-    それまでは前の値引き（半額）のまま。"""
+def test_55_percent_or_more_is_applied_only_after_the_approval_delay() -> None:
+    """55%以上の値引きは、最初に承認待ちになったステップから approval_delay_steps 後に初めて
+    モニターに出る。それまでは前の値引き（50%）のまま。承認待ちのあいだにさらに上がっても、
+    承認される時刻は延びない（§5.19）。"""
     checked = 0
     for seed in range(10):
         outcome = run_simulation(
@@ -449,15 +281,15 @@ def test_zubari_is_applied_only_after_the_approval_delay() -> None:
         )
         for pid in (1, 2, 3):
             steps = sorted((s for s in outcome.steps if s.product_id == pid), key=lambda s: s.step)
-            first = next((s for s in steps if s.recommended_rate > 0.50), None)
+            first = next((s for s in steps if s.recommended_rate >= 0.55), None)
             if first is None or first.step + 2 >= len(steps):
                 continue
             by_step = {s.step: s for s in steps}
             assert by_step[first.step].applied_rate <= 0.50
             assert by_step[first.step + 1].applied_rate <= 0.50
-            assert by_step[first.step + 2].applied_rate > 0.50
+            assert by_step[first.step + 2].applied_rate >= 0.55
             checked += 1
-    assert checked >= 1, "テストの前提（ズバリ引きが承認されるまでの時間がある）が崩れている"
+    assert checked >= 1, "テストの前提（55%以上まで上がる）が崩れている"
 
 
 def test_approval_delay_never_lowers_what_is_on_the_monitor() -> None:
@@ -505,10 +337,10 @@ def test_morning_sales_never_exceed_the_morning_stock() -> None:
 
 
 def test_no_discount_is_decided_before_18() -> None:
-    """昼に値引きは無く、17時台の夕方の山も定価で売る。値引きの判断は18時（ステップ27）から。"""
+    """昼に値引きは無く、17時台の夕方の山も定価で売る。値引きの判断は18時（ステップ32）から。"""
     from services.simulation import EARLIEST_DISCOUNT_STEP
 
-    assert EARLIEST_DISCOUNT_STEP == 27
+    assert EARLIEST_DISCOUNT_STEP == 32  # 18:00
     for seed in range(5):
         outcome = run_simulation(_low_demand_products(), target_waste_rate=0.0, seed=seed)
         for s in outcome.steps:
@@ -516,21 +348,6 @@ def test_no_discount_is_decided_before_18() -> None:
                 assert s.recommended_rate == 0.0, f"seed={seed} step={s.step}"
 
 
-def test_discount_never_skips_30_percent_and_holds_it_for_3_steps() -> None:
-    """段階を飛ばさない（docs/spec.md §5.3。2026-11-26）：半額の前に必ず30%引きがあり、
-    30%引きは最低MIN_STEPS_AT_30ステップ続く。"""
-    from services.simulation import MIN_STEPS_AT_30
-
-    for seed in range(10):
-        outcome = run_simulation(_low_demand_products(), target_waste_rate=0.0, seed=seed)
-        for pid in (1, 2, 3):
-            steps = sorted((s for s in outcome.steps if s.product_id == pid), key=lambda s: s.step)
-            first_30 = next((s.step for s in steps if s.recommended_rate == 0.30), None)
-            first_half = next((s.step for s in steps if s.recommended_rate >= 0.50), None)
-            if first_half is None:
-                continue
-            assert first_30 is not None, f"seed={seed} pid={pid}: 30%引きを飛ばして半額になった"
-            assert first_half - first_30 >= MIN_STEPS_AT_30
 
 
 def test_sellout_step_is_not_learned_as_low_demand() -> None:
@@ -652,7 +469,7 @@ def test_planned_stock_is_the_full_price_demand_of_the_day() -> None:
     """予測から作る量を決める（§5.17）：予測の平均×1日の時間帯の重みの合計（＝40）を四捨五入。"""
     from services.simulation import planned_stock
 
-    assert planned_stock(1.0, 2.0) == 20  # 平均0.5 × 40ステップ
+    assert planned_stock(1.0, 2.0) == 24  # 平均0.5 × 48ステップ（15分ごと）
     assert planned_stock(0.01, 2.0) == 1  # 最低1個
 
 
@@ -695,3 +512,46 @@ def test_restock_is_smaller_after_a_slow_lunch_and_bigger_after_a_busy_one() -> 
     assert restock_amount(10, shelf_now=0, lunch_sold=10, lunch_predicted=10.0) == 13
     # 昼の残りが目標より多ければ、補充しない
     assert restock_amount(10, shelf_now=9, lunch_sold=4, lunch_predicted=8.0) == 0
+
+
+
+# --- 15分ごとに「上げる」か「そのまま」、5%刻み（docs/spec.md §5.19。2026-11-26） ---
+
+
+def test_discount_tiers_are_20_to_75_in_5_percent_steps() -> None:
+    assert DISCOUNT_TIERS == (0.0, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75)
+    assert DISCOUNT_TIERS[-1] == MAX_DISCOUNT
+
+
+def test_next_discount_starts_at_20_and_goes_up_5_percent() -> None:
+    from services.simulation import next_discount
+
+    assert next_discount(0.0) == 0.20
+    assert next_discount(0.20) == 0.25
+    assert next_discount(0.50) == 0.55
+    assert next_discount(0.75) == 0.75  # 上限
+
+
+def test_should_raise_when_the_forecast_cannot_sell_out_by_closing() -> None:
+    """予測（平均1.0/15分）× 残り5の重み × 今の値引きの倍率（0%なら1）＝5個しか売れない見込み。
+    残り10個なら上げる、残り4個ならそのまま。"""
+    from services.simulation import should_raise_discount
+
+    kwargs = dict(target_waste_stock=0.0, predicted_rate=1.0, remaining_exposure=5.0,
+                  current_rate=0.0, elasticity=0.15)
+    assert should_raise_discount(remaining_stock=10, **kwargs) is True
+    assert should_raise_discount(remaining_stock=4, **kwargs) is False
+
+
+def test_discount_goes_up_at_most_one_5_percent_step_every_15_minutes() -> None:
+    """値引きは1回の判断（15分）で1段（+5%）まで。最初は20%。下がらない。"""
+    for seed in range(10):
+        outcome = run_simulation(_low_demand_products(), target_waste_rate=0.0, seed=seed)
+        for pid in (1, 2, 3):
+            rates = [s.recommended_rate for s in sorted(outcome.steps, key=lambda s: s.step) if s.product_id == pid]
+            assert rates == sorted(rates)
+            nonzero = [r for r in rates if r > 0]
+            if nonzero:
+                assert nonzero[0] == 0.20
+            for a, b in zip(rates, rates[1:]):
+                assert round(b - a, 6) in (0.0, 0.05) or (a == 0.0 and b == 0.20)

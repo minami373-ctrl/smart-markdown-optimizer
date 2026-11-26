@@ -1,6 +1,6 @@
 const BUSINESS_START_MINUTES = 10 * 60 // 10:00
 const BUSINESS_END_MINUTES = 22 * 60 // 22:00（2026-11-26改訂。1ステップ18分）
-const DEFAULT_TOTAL_STEPS = 40
+const DEFAULT_TOTAL_STEPS = 48 // 15分ごと（docs/spec.md §5.19。2026-11-26改訂）
 
 /**
  * シミュレーションのステップ番号を営業時間（10:00〜22:00。docs/spec.md §5.2）内の

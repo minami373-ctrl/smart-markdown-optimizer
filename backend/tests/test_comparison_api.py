@@ -60,8 +60,8 @@ def test_compare_returns_dynamic_and_fixed_results_per_product(
             "fixed_steps",
             "fixed_final_waste_rate",
         }
-        assert len(p["dynamic_steps"]) == 40
-        assert len(p["fixed_steps"]) == 40
+        assert len(p["dynamic_steps"]) == 48  # 15分ごと（§5.19）
+        assert len(p["fixed_steps"]) == 48
 
 
 def test_compare_returns_fixed_schedule_step_constants(

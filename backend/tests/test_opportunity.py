@@ -27,13 +27,13 @@ def test_detects_early_sellout_without_discount() -> None:
 
 def test_suggested_increase_extrapolates_to_full_day() -> None:
     # 在庫10個をちょうど5ステップ（steps_to_sellout=5）で完売
-    # 推奨追加 = round(10 * (40-5)/5) = round(70) = 70
+    # 推奨追加 = round(10 * (48-5)/5) = round(86) = 86（1日48ステップ・15分ごと。§5.19）
     steps = steps_no_discount([2, 2, 2, 2, 2])
 
     result = detect_opportunity(steps, initial_stock=10)
 
     assert result is not None
-    assert result.suggested_increase == 70
+    assert result.suggested_increase == 86
 
 
 def test_not_detected_if_ever_discounted() -> None:
@@ -49,7 +49,7 @@ def test_not_detected_if_ever_discounted() -> None:
 
 
 def test_not_detected_if_never_sells_out() -> None:
-    steps = steps_no_discount([1] * 40)  # 40個中40個消費で在庫0だが在庫が十分にあるケース
+    steps = steps_no_discount([1] * 48)  # 48個中48個消費で在庫0だが在庫が十分にあるケース
 
     result = detect_opportunity(steps, initial_stock=100)
 
@@ -57,8 +57,8 @@ def test_not_detected_if_never_sells_out() -> None:
 
 
 def test_not_detected_if_sellout_too_close_to_closing() -> None:
-    # 38ステップ目（steps_to_sellout=39）で完売 → 早期とはみなさない
-    quantities = [0] * 38 + [10]
+    # 46ステップ目（steps_to_sellout=47）で完売 → 早期とはみなさない（閉店45分前より後）
+    quantities = [0] * 46 + [10]
     steps = steps_no_discount(quantities)
 
     result = detect_opportunity(steps, initial_stock=10)
@@ -66,15 +66,15 @@ def test_not_detected_if_sellout_too_close_to_closing() -> None:
     assert result is None
 
 
-def test_detected_at_exact_boundary_step_37() -> None:
-    # 37ステップ目（0始まりでstep=37、steps_to_sellout=38）でちょうど完売は対象外の境界
-    quantities = [0] * 37 + [10]
+def test_detected_at_exact_boundary_step_45() -> None:
+    # 45ステップ目（0始まりでstep=45、閉店の3ステップ前）でちょうど完売は対象の境界
+    quantities = [0] * 45 + [10]
     steps = steps_no_discount(quantities)
 
     result = detect_opportunity(steps, initial_stock=10)
 
     assert result is not None
-    assert result.sellout_step == 37
+    assert result.sellout_step == 45
 
 
 def test_zero_initial_stock_returns_none() -> None:

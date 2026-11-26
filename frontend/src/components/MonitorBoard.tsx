@@ -11,7 +11,7 @@ export interface MonitorItem {
 
 /**
  * 売り場モニター（お客さんに見える表示。docs/spec.md §4①・§5.11）。
- * シールの代わりに、今の値引きを商品ごとに一覧で出す。承認待ちのズバリ引きは出さない
+ * シールの代わりに、今の値引きを商品ごとに一覧で出す。承認待ちの値引き（55%以上）は出さない
  * （モニターに出るのはナイトマネージャーが承認したものだけ）。売り切れた商品は「売り切れ」。
  */
 export default function MonitorBoard({ items, clock }: { items: MonitorItem[]; clock: string }) {
@@ -48,7 +48,7 @@ export default function MonitorBoard({ items, clock }: { items: MonitorItem[]; c
                 </span>
               )}
               {discounted && (
-                <span className="sticker">{label.startsWith('ズバリ') ? 'ズバリ' : label}</span>
+                <span className="sticker">{label}</span>
               )}
             </li>
           )

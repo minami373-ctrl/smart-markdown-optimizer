@@ -1,32 +1,20 @@
 /**
- * 値引き率を売り場の言葉で表す（docs/spec.md §5.3。2026-11-26追加）。
- * - 0%：値引きなし
- * - 30%：30%引き
- * - 50%：半額
- * - 半額より大きい値引き（21時以降のズバリ引き）：単価があれば「ズバリ ¥190」のように
- *   10円単位の値段で表示する。値段は切り下げ（売り切りやすい側）だが、下限
- *   （元の値段の75%引き）を下回らないよう、下限の値段は10円単位に切り上げる
+ * 値引き率を売り場の言葉で表す（docs/spec.md §5.19。2026-11-26改訂）。
+ * 値引きは20%〜75%の5%刻みで、すべて「〇%引き」で表示する（ズバリ引きという呼び方はやめた）。
+ * 単価の引数は以前の呼び出し側との互換のために残している（表示には使わない）。
  */
-export const ZUBARI_FLOOR_RATE = 0.75
-
-export function zubariPrice(unitPrice: number, rate: number): number {
-  const floorPrice = Math.ceil((unitPrice * (1 - ZUBARI_FLOOR_RATE)) / 10) * 10
-  const price = Math.floor((unitPrice * (1 - rate)) / 10) * 10
-  return Math.max(floorPrice, price)
-}
-
-export function discountLabel(rate: number, unitPrice: number | null): string {
+export function discountLabel(rate: number, _unitPrice?: number | null): string {
   if (rate <= 0) return '値引きなし'
-  if (rate <= 0.5) return rate === 0.5 ? '半額' : `${Math.round(rate * 100)}%引き`
-  if (unitPrice == null) return `ズバリ引き（${Math.round(rate * 100)}%引き）`
-  return `ズバリ ¥${zubariPrice(unitPrice, rate)}`
+  return `${Math.round(rate * 100)}%引き`
 }
 
 /**
- * 値引き後の売値（docs/spec.md §4①「売り場モニター」。components/MonitorBoard.tsx で使う）。30%引き・半額は1円単位で四捨五入、
- * ズバリ引き（半額より大きい値引き）はzubariPriceと同じ10円単位の値段にする。
+ * 値引き後の売値（docs/spec.md §4①「売り場モニター」。components/MonitorBoard.tsx で使う）。
+ * 1円単位で四捨五入する。
  */
 export function monitorPrice(unitPrice: number, rate: number): number {
-  if (rate > 0.5) return zubariPrice(unitPrice, rate)
-  return Math.round(unitPrice * (1 - rate))
+  // 1 − 0.55 ＝ 0.44999… のような浮動小数点の誤差で、193.5円が193円に切り下がらないよう、
+  // 割合を整数の%に直してから計算する（430円の55%引き＝193.5円→194円）
+  const keepPercent = Math.round((1 - rate) * 100)
+  return Math.round((unitPrice * keepPercent) / 100)
 }

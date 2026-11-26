@@ -116,7 +116,7 @@ def test_fixed_schedule_goes_to_zubari_floor_after_21() -> None:
     """実際の売り場の手順どおり、21時を過ぎたら固定スケジュール側もズバリ引き（下限75%引き）。"""
     from services.schedule_comparison import FIXED_SCHEDULE_ZUBARI_STEP
 
-    assert FIXED_SCHEDULE_ZUBARI_STEP == 37
+    assert FIXED_SCHEDULE_ZUBARI_STEP == 44  # 21:00
     assert _fixed_schedule_rate(FIXED_SCHEDULE_ZUBARI_STEP - 1) == 0.50
     assert _fixed_schedule_rate(FIXED_SCHEDULE_ZUBARI_STEP) == 0.75
 

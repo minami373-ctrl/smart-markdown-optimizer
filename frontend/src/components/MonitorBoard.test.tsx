@@ -1,19 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import MonitorBoard from './MonitorBoard'
-import { monitorPrice } from '../lib/discountLabel'
-
-describe('monitorPrice', () => {
-  it('30%引き・半額は1円単位で四捨五入した売値', () => {
-    expect(monitorPrice(430, 0.3)).toBe(301)
-    expect(monitorPrice(430, 0.5)).toBe(215)
-  })
-
-  it('ズバリ引きは10円単位の値段（下限を割らない）', () => {
-    expect(monitorPrice(430, 0.55)).toBe(190)
-    expect(monitorPrice(430, 0.75)).toBe(110)
-  })
-})
 
 describe('MonitorBoard', () => {
   it('値引き中の商品は値引きの言葉と値引き後の売値、売り切れは「売り切れ」を表示する', () => {
@@ -31,7 +18,7 @@ describe('MonitorBoard', () => {
     const board = screen.getByLabelText('売り場モニター')
     expect(within(board).getByText('20:30')).toBeInTheDocument()
     const bento = within(board).getByText('唐揚げ弁当').closest('li')!
-    expect(bento).toHaveTextContent('半額')
+    expect(bento).toHaveTextContent('50%引き')
     expect(bento).toHaveTextContent('¥215')
     const katsu = within(board).getByText('ロースカツ').closest('li')!
     expect(katsu).toHaveTextContent('¥250')

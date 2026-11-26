@@ -54,8 +54,8 @@ def test_create_simulation_returns_steps_and_finals(
     body = res.json()
     assert body["status"] == "finished"
     assert len(body["finals"]) == len(products)
-    # 商品数 × 40ステップぶんの明細が返る
-    assert len(body["steps"]) == len(products) * 40
+    # 商品数 × 48ステップ（15分ごと）ぶんの明細が返る
+    assert len(body["steps"]) == len(products) * 48
 
 
 def test_create_simulation_steps_include_growing_posterior_beta(

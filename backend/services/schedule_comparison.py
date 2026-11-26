@@ -28,11 +28,10 @@ from services.simulation import (
 )
 
 #: 固定スケジュールの値引きタイミング。frontend/src/lib/clock.tsのstepToClockTime
-#: （営業時間10:00〜22:00・40ステップの換算。2026-11-26改訂）を逆算した値（docs/spec.md §5.9）：
-#: 19:00 → (19:00-10:00)/(22:00-10:00)*40 = 540/720*40 = 30
-#: 20:30 → (20:30-10:00)/(22:00-10:00)*40 = 630/720*40 = 35
-FIXED_SCHEDULE_30_STEP = 30
-FIXED_SCHEDULE_50_STEP = 35
+#: （営業時間10:00〜22:00・15分ごと48ステップ。2026-11-26改訂）を逆算した値（docs/spec.md §5.9）：
+#: 19:00 → 9時間×4 = 36、20:30 → 10.5時間×4 = 42、21:00（ズバリ引き）→ 44
+FIXED_SCHEDULE_30_STEP = 36
+FIXED_SCHEDULE_50_STEP = 42
 #: 21時のズバリ引き（実際の売り場の手順。2026-11-26追加）。固定スケジュール側は売れ行きを見ないので、
 #: 21時を過ぎたら下限（元の値段の75%引き）まで一気に下げる
 FIXED_SCHEDULE_ZUBARI_STEP = ZUBARI_START_STEP
@@ -44,7 +43,7 @@ FIXED_SCHEDULE_ZUBARI_STEP = ZUBARI_START_STEP
 #: 固定スケジュール側だけに、比較画面で選んだときだけ掛ける（動的値引きは時刻が日によって変わる）
 ANTICIPATION_BEFORE_30 = 0.5  # 18:00〜19:00の需要の倍率
 ANTICIPATION_DURING_30 = 0.6  # 30%引きの間（19:00〜20:30）の需要の倍率
-ANTICIPATION_START_STEP = 27  # 18:06（18時を過ぎた最初のステップ）
+ANTICIPATION_START_STEP = 32  # 18:00
 
 
 def _anticipation_factor(step: int) -> float:

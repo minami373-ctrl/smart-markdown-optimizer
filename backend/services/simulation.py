@@ -31,36 +31,26 @@ import math
 import random
 from dataclasses import dataclass, field
 
-STEPS = 40
+#: 営業時間10:00〜22:00を15分ごとに区切る（2026-11-26改訂：40ステップ・18分→48ステップ・15分。
+#: 15分ごとに売れた数を集め、予測を更新し、値引きを「上げる」か「そのまま」か決める。docs/spec.md §5.19）
+STEPS = 48
 DISCOUNT_STEP_UNIT = 0.10  # 値引き感度(elasticity)は「値引き10%あたり」の倍率として定義されている
 MIN_DISCOUNT = 0.0
 MAX_DISCOUNT = 0.75
-#: 前回提案からこの幅（%pt）以上変化しないと新しい提案として記録しない。
-#: DISCOUNT_TIERS導入後は隣接する刻み同士の差（最小20pt）が必ずこれを上回るため、
-#: 実質「刻みが変わったかどうか」と同じ判定になっている（意図的な残置。壊れてはいない）
+#: 前回提案からこの幅（%pt）以上変化しないと新しい提案として記録しない（5%刻みなので刻みが変わったら記録）
 MIN_RATE_CHANGE = 0.05
-#: 21時より前に使える値引きの刻み：30%引き・半額（docs/spec.md §5.3。2026-11-26改訂）
-PRE_ZUBARI_TIERS: tuple[float, ...] = (0.0, 0.30, 0.50)
-#: ズバリ引き（値段を直接決める値引き）が使えるようになる最初のステップ。営業時間10:00〜22:00・
-#: 40ステップ（1ステップ18分）で、21:00を過ぎた最初のステップ＝37（21:06）。
-#: このステップ以降に決まる値引きだけが半額より大きくなれる
-ZUBARI_START_STEP = 37
-#: ズバリ引きの刻み：半額より下を5%ずつ、下限は元の値段の75%引き（MAX_DISCOUNT）。
-#: 画面にはこの率から計算した10円単位の値段で表示する（frontend/src/lib/discountLabel.ts）
-ZUBARI_TIERS: tuple[float, ...] = (0.55, 0.60, 0.65, 0.70, MAX_DISCOUNT)
-#: 半額。これより大きい値引き（ズバリ引き）だけがナイトマネージャーの承認待ちになる（§5.11）
-HALF_PRICE_RATE = 0.50
-#: 30%引きを最低何ステップ続けてから半額に上げるか（docs/spec.md §5.3。2026-11-26追加）。
-#: 3ステップ＝54分。実際の売り場は19時に30%引き・20時半に半額で、30%引きで売れる時間がある
-MIN_STEPS_AT_30 = 3
-#: 値引き率が取りうる値の全体（DiscountRecommendation.recommended_rateの値の範囲）
-DISCOUNT_TIERS: tuple[float, ...] = PRE_ZUBARI_TIERS + ZUBARI_TIERS
-#: 値引きを検討し始める閾値（docs/spec.md §5.3「トリガー：見込みではなく実際の遅れで判定する」）。
-#: 「実際に売れた個数」が「目標ペースで売れているべき個数（初期在庫の目標達成分×経過割合）」
-#: よりinitial_stockのこの割合以上少なければ値引き幅の計算に進む。2026-08-15追加。
-#: 数ステップぶんの偶然のブレでは反応しないための遊びで、開店直後は目標ペース自体が小さいため
-#: このマージンだけで序盤の過敏な反応も抑えられる（旧GRACE_PERIOD_STEPSの役割を吸収した）
-SHORTFALL_MARGIN_RATE = 0.15
+#: 最初の値引き（§5.19。本人と決定）と、1回の判断で上げる幅
+FIRST_DISCOUNT = 0.20
+DISCOUNT_INCREMENT = 0.05
+#: 値引き率が取りうる値：0%、20%〜75%の5%刻み
+DISCOUNT_TIERS: tuple[float, ...] = (0.0,) + tuple(
+    round(FIRST_DISCOUNT + DISCOUNT_INCREMENT * i, 2)
+    for i in range(int(round((MAX_DISCOUNT - FIRST_DISCOUNT) / DISCOUNT_INCREMENT)) + 1)
+)
+#: これ以上の値引きはナイトマネージャーの承認を通す（半額より大きい値引きは取り返しがつかないため。§5.11）
+APPROVAL_RATE = 0.55
+#: 実際の売り場の21時（ズバリ引きの時刻）。固定スケジュール比較の固定側だけが使う（§5.9）
+ZUBARI_START_STEP = 44
 
 #: 1日の売れ方（docs/spec.md §5.12。2026-11-26追加）。売り場の聞き取りをもとにした、時間帯ごとの
 #: 需要の重み（値は相対値。demand_curveで1ステップあたり平均1.0になるよう正規化する）。
@@ -80,14 +70,14 @@ BUSINESS_START_MINUTES = 10 * 60
 BUSINESS_END_MINUTES = 22 * 60
 #: 16時の補充（docs/spec.md §5.12）。16:00 = (16:00-10:00)/(22:00-10:00)*40 = ステップ20。
 #: このステップの販売の前に補充分が並ぶ。値引きの判定もこのステップから始める（昼の値引きは無い）
-RESTOCK_STEP = 20
+RESTOCK_STEP = 24  # 16:00（15分×24）
 #: 1日の在庫（Product.initial_stock）のうち朝に並べる割合。残りを16時に補充する。
 #: 実際の割合は分からないため、いったん半分ずつにしている（本人と決定）
 MORNING_STOCK_RATIO = 0.5
 #: 値引きの判断を始める最初のステップ（§5.12）。17時台は夕方の山で定価で売れる（売り場の聞き取り）
 #: ため、18時を過ぎた最初のステップ（27＝18:06）から判断する。夜の在庫は1商品あたり十数個と少なく、
 #: 1〜2個の偶然の遅れで17時台に値引きしてしまうのを防ぐ
-EARLIEST_DISCOUNT_STEP = 27
+EARLIEST_DISCOUNT_STEP = 32  # 18:00（15分×32）
 
 
 def demand_curve(steps: int = STEPS) -> list[float]:
@@ -183,7 +173,7 @@ FORGETTING_FACTOR = 0.9
 #: 「いつもと違う」を判定するステップ（docs/spec.md §5.16。2026-11-26追加）。昼の山（12時台）が終わった
 #: 13:00＝ステップ10の販売の後。夜の作る量はもう決まっているので、値引きの判断の参考と、
 #: 次の日に条件（長期休み・イベント）の入れ忘れに気づくための知らせ
-ALERT_STEP = 10
+ALERT_STEP = 12  # 13:00（15分×12）
 #: 開店からここまでに売れた数が、店側の予測（その日の事前分布の平均）の何倍より少ない／多いと知らせるか
 ALERT_LOW_RATIO = 0.75  # 0.7だと長期休み（需要0.7倍）がちょうど境目になり、入れ忘れの日の73%しか気づけなかった。
 # 0.75で入れ忘れの87%に気づき、いつもどおりの日の誤報は7%（0.8だと誤報20%で、知らせが無視されやすくなる）
@@ -273,91 +263,28 @@ class SimulationOutcome:
     finals: list[ProductFinalResult] = field(default_factory=list)
 
 
-def _is_behind_pace(
-    actual_sold: int,
-    initial_stock: int,
-    target_waste_stock: float,
-    elapsed_steps: int,
-    total_steps: int,
-    elapsed_fraction: float | None = None,
-) -> bool:
-    """「実際に売れた個数」が「目標ペースで売れているべき個数」より
-    `SHORTFALL_MARGIN_RATE`ぶん以上少なければTrue（docs/spec.md §5.3「トリガー」）。
-
-    「目標ペースで売れているべき個数」は、目標廃棄率を満たすために必要な販売数
-    （initial_stock - target_waste_stock）を、開店から閉店まで一定のペースで売ると
-    仮定して経過ステップの割合ぶんだけ直線的に案分した値。事後分布などの統計的な見込みは
-    一切使わず、その回で実際に生成された購入ログの数（actual_sold）だけを見る。
-
-    elapsed_fractionを渡すと、経過ステップの割合の代わりにそれを使う（2026-11-26追加。
-    1日の売れ方〔demand_curve〕に沿った目標ペース。docs/spec.md §5.12）。
-    """
-    if total_steps <= 0:
-        return False
-    units_to_sell_total = initial_stock - target_waste_stock
-    if units_to_sell_total <= 0:
-        return False
-    fraction = elapsed_steps / total_steps if elapsed_fraction is None else elapsed_fraction
-    expected_sold_by_now = units_to_sell_total * fraction
-    shortfall = expected_sold_by_now - actual_sold
-    margin = initial_stock * SHORTFALL_MARGIN_RATE
-    return shortfall > margin
+def next_discount(current: float) -> float:
+    """1回の判断で上げる先（§5.19）：値引きなしなら最初の20%、それ以外は+5%（上限75%）。"""
+    if current <= 0:
+        return FIRST_DISCOUNT
+    return min(MAX_DISCOUNT, round(current + DISCOUNT_INCREMENT, 2))
 
 
-def _required_discount_rate(
+def should_raise_discount(
     remaining_stock: int,
-    remaining_steps: float,
     target_waste_stock: float,
-    baseline_rate: float,
+    predicted_rate: float,
+    remaining_exposure: float,
+    current_rate: float,
     elasticity: float,
-) -> float:
-    """残り時間で目標廃棄率以内に売り切るために必要な値引き率を計算する。
+) -> bool:
+    """今の値引きのまま閉店までに売り切れる見込みがなければTrue（＝+5%上げる。§5.19）。
 
-    remaining_stepsは「残り時間の長さ」。1日の売れ方（docs/spec.md §5.12）を入れてからは、
-    残りステップの需要の重みの合計（売れやすい時間帯ほど長く数える）を渡す。
+    見込み＝予測の平均（前日までの学習＋今日の売れ方でベイズ更新した事後分布の平均）
+    × 残りの時間帯の重みの合計 × 今の値引きの需要倍率。これが「残りの在庫−目標の廃棄」に届かなければ上げる。
     """
-    if remaining_steps <= 0 or remaining_stock <= 0:
-        return 0.0
-
-    required_demand = remaining_stock - target_waste_stock
-    if required_demand <= 0:
-        return 0.0
-
-    baseline_projected = baseline_rate * remaining_steps
-    if baseline_projected <= 0:
-        # 事後分布の期待需要が0なら、割ると0除算になるため上限値引きを提案する
-        # （ここに来た時点で required_demand > 0 は確定済み。上の early return 参照）
-        return MAX_DISCOUNT
-
-    if baseline_projected >= required_demand:
-        return 0.0
-
-    needed_multiplier = required_demand / baseline_projected
-    if elasticity <= 0:
-        return 0.0
-    # discount_multiplier（需要倍率 = 1 + 感度 × (値引き率 ÷ 10%)²）の逆算。
-    # 2026-11-26修正：需要倍率の式は2026-08-15に1乗から2乗へ変えていたが、ここの逆算だけ
-    # 1乗の式（(倍率-1) × 10% ÷ 感度）のまま残っていて、必要な値引き幅を大きめに見積もっていた
-    rate = DISCOUNT_STEP_UNIT * math.sqrt((needed_multiplier - 1.0) / elasticity)
-    return max(MIN_DISCOUNT, min(MAX_DISCOUNT, rate))
-
-
-def _snap_to_tier(rate: float, allow_zubari: bool = True) -> float:
-    """連続値の値引き率を、使える値引きの刻みのうちその値以上で最小のものに
-    切り上げる（docs/spec.md §5.3）。
-
-    allow_zubari=False（21時より前。ZUBARI_START_STEP未満）のときは30%引き・半額の
-    2段階だけを使い、半額を超える値は半額に抑える（ズバリ引きは21時以降だけ）。
-
-    切り下げではなく切り上げなのは、目標廃棄率を満たすのに必要な値引きが刻みの間の
-    半端な値になったとき、切り下げると値引きが足りず目標未達になりやすいため
-    （安全側＝売り切りやすい側に倒す）。rateが最大の刻みを超えていたら最大値に丸める。
-    """
-    tiers = DISCOUNT_TIERS if allow_zubari else PRE_ZUBARI_TIERS
-    for tier in tiers:
-        if rate <= tier:
-            return tier
-    return tiers[-1]
+    expected = predicted_rate * remaining_exposure * discount_multiplier(current_rate, elasticity)
+    return expected < remaining_stock - target_waste_stock
 
 
 def run_simulation(
@@ -410,8 +337,6 @@ def run_simulation(
             # モニターに出ている値引き率（承認済み）と、承認待ちのズバリ引き（率, 承認されるステップ）
             "applied": 0.0,
             "pending": None,
-            # 最後に値引きを上げたステップ（30%引きを続けた長さを数えるため）
-            "raised_at": -1,
             # 「いつもと違う」の知らせ（§5.16）と、開店からの販売数
             "alert": None,
             "sold_so_far": 0,
@@ -480,62 +405,31 @@ def run_simulation(
                 predicted = min(predicted, split_stock(p.initial_stock)[0])
                 state["alert"] = unusual_sales_alert(state["sold_so_far"], predicted)
 
-            # 3) 次の値引き率を計算。「判定」と「値引き幅」を分離した（2026-08-15改訂。
-            #    docs/spec.md §5.3）。判定は実際に売れた個数と目標ペースの比較（統計的な
-            #    見込みを使わない、実績ベース）。値引き幅の計算だけ事後分布の平均を使う
+            # 3) 15分ごとの値引きの判断（§5.19。2026-11-26改訂）。この15分の売れた数で予測を更新した
+            #    うえで（上の2)）、「今の値引きのまま閉店までに売り切れる見込みか」を予測で確かめる。
+            #    見込みがなければ+5%（最初は20%）、見込みがあればそのまま。下げることはしない。
+            #    判断は18:00（EARLIEST_DISCOUNT_STEP）から。16時に補充したあとの夜の分が対象
             updated_mean = state["alpha"] / state["beta"]
             target_waste_stock = target_waste_rate * p.initial_stock
             # 1日の残り＝店頭在庫＋まだ補充していない分
             day_remaining = state["remaining"] + state["restock"]
             remaining_exposure = sum(curve[step + 1 :])
-            evening_stock = state["evening_stock"]
-            behind_pace = (
+            current = state["last_recommended"]
+            candidate_rate = current
+            if (
                 step >= EARLIEST_DISCOUNT_STEP
-                and evening_stock is not None
-                and evening_stock > 0
-                and _is_behind_pace(
-                    actual_sold=evening_stock - day_remaining,
-                    initial_stock=evening_stock,
+                and state["remaining"] > 0
+                and current < MAX_DISCOUNT
+                and should_raise_discount(
+                    remaining_stock=state["remaining"],
                     target_waste_stock=target_waste_stock,
-                    elapsed_steps=step + 1,
-                    total_steps=steps,
-                    elapsed_fraction=evening_cumulative[step],
-                )
-            )
-            if not behind_pace:
-                # 16時の補充より前は値引きしない（昼に値引きは絶対に無い。§5.12）。
-                # 補充後も、1日の売れ方に沿った目標ペースの範囲内なら値引きしない
-                # まだ目標ペースの範囲内（またはマージン内の軽微な遅れ）なので、
-                # 値引き幅の計算そのものを行わない（見込みで先回りしない）
-                continuous_rate = 0.0
-            else:
-                continuous_rate = _required_discount_rate(
-                    remaining_stock=day_remaining,
-                    remaining_steps=remaining_exposure,
-                    target_waste_stock=target_waste_stock,
-                    baseline_rate=updated_mean,
+                    predicted_rate=updated_mean,
+                    remaining_exposure=remaining_exposure,
+                    current_rate=current,
                     elasticity=p.elasticity,
                 )
-            # 連続値のままでは提案しない。実店舗の値引きの刻みに丸める（docs/spec.md §5.3）
-            #    ズバリ引き（半額より大きい値引き）は21時を過ぎたステップ以降だけ（2026-11-26）
-            snapped_rate = _snap_to_tier(
-                continuous_rate, allow_zubari=step >= ZUBARI_START_STEP
-            )
-            # 値引きシールは一度貼ったら剥がせない、という物理的な制約の再現：
-            # 値引き率は一度上がったら下がらない（前のステップ以上にしかならない）
-            candidate_rate = max(snapped_rate, state["last_recommended"])
-            # 段階を飛ばさない（2026-11-26追加。§5.3）：半額までは「値引きなし→30%引き→半額」を
-            # 1段ずつ上げ、30%引きは最低MIN_STEPS_AT_30ステップ続ける。ブラウザで確認したところ、
-            # 18時台にいきなり半額になる商品が多く、実際の売り場の流れと合わなかったため。
-            # 半額からズバリ引き（21時以降）は残り時間が少ないので、必要な刻みまで一度に上げてよい
-            current = state["last_recommended"]
-            if candidate_rate > current and current < HALF_PRICE_RATE:
-                if current == 0.0:
-                    candidate_rate = 0.30
-                elif step - state["raised_at"] < MIN_STEPS_AT_30:
-                    candidate_rate = current
-                else:
-                    candidate_rate = HALF_PRICE_RATE
+            ):
+                candidate_rate = next_discount(current)
 
             # candidate_rate は必ず last_recommended 以上（値引きは下げないため）。
             # 差は常に非負なので abs() は不要
@@ -544,13 +438,18 @@ def run_simulation(
             is_new = round(candidate_rate - state["last_recommended"], 6) >= MIN_RATE_CHANGE
             if is_new:
                 state["last_recommended"] = candidate_rate
-                state["raised_at"] = step
-                if candidate_rate > HALF_PRICE_RATE:
-                    # ズバリ引きはナイトマネージャーの承認待ち（docs/spec.md §5.11）。
-                    # 新しいズバリ引きが出たら、承認待ちをその提案に置き換える
-                    state["pending"] = (candidate_rate, step + approval_delay_steps)
+                if candidate_rate >= APPROVAL_RATE:
+                    # 55%以上はナイトマネージャーの承認待ち（docs/spec.md §5.11）。承認待ちのあいだに
+                    # さらに上がったら、承認するのはその時点の最新の提案。承認される時刻は最初に
+                    # 承認待ちになったときから数える（15分ごとに上がっても承認が永遠に来ない、を防ぐ）
+                    ready = (
+                        state["pending"][1]
+                        if state["pending"] is not None
+                        else step + approval_delay_steps
+                    )
+                    state["pending"] = (candidate_rate, ready)
                 else:
-                    # 30%引き・半額は自動で出る（承認待ちにしない）
+                    # 55%未満は自動で出る（承認待ちにしない）
                     state["applied"] = candidate_rate
             if state["pending"] is not None and step >= state["pending"][1]:
                 state["applied"] = state["pending"][0]

@@ -32,12 +32,12 @@ const COLORS = ['#d9480f', '#1971c2', '#2f9e44']
 // 目標廃棄率のプリセットボタン（docs/spec.md §4①）。スライダーの値を直接書き換えるだけの補助UI
 const TARGET_WASTE_RATE_PRESETS = [0, 0.03, 0.05, 0.1]
 
-//: ズバリ引きの承認の遅れの選択肢（docs/spec.md §5.11。1ステップ18分）
+//: 55%以上の値引きの承認の遅れの選択肢（docs/spec.md §5.11・§5.19。1ステップ15分）
 const APPROVAL_DELAY_OPTIONS = [
   { steps: 0, label: 'すぐ承認' },
-  { steps: 1, label: '18分後' },
-  { steps: 2, label: '36分後（忙しい）' },
-  { steps: 3, label: '54分後（1人で回している）' },
+  { steps: 1, label: '15分後' },
+  { steps: 2, label: '30分後（忙しい）' },
+  { steps: 3, label: '45分後（1人で回している）' },
 ]
 
 export default function SimulationPage() {
@@ -311,7 +311,7 @@ export default function SimulationPage() {
             </select>
           </label>
           <label>
-            ズバリ引きの承認（ナイトマネージャー）
+            55%以上の承認（ナイトマネージャー）
             <select
               value={approvalDelaySteps}
               onChange={(e) => setApprovalDelaySteps(Number(e.target.value))}
